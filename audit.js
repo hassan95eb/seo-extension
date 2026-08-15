@@ -8,7 +8,10 @@
 (function () {
   if (window.__SEO_LENS_AUDIT__) return;
 
-  const SEV = { ERROR: "error", WARN: "warning", INFO: "info", PASS: "pass" };
+  // STAT is a neutral measurement, not a judgement: it is shown to the user but is
+  // deliberately kept out of the issue counts and out of the score, so that a page
+  // with nothing wrong can actually reach 100/100.
+  const SEV = { ERROR: "error", WARN: "warning", INFO: "info", PASS: "pass", STAT: "stat" };
 
   const GENERIC_ANCHORS = [
     "click here", "here", "read more", "more", "link", "this", "learn more", "see more",
@@ -228,9 +231,12 @@
     if (internal === 0 && anchors.length) {
       add({ severity: SEV.WARN, cat: "links", code: "A_NO_INTERNAL" });
     }
+    // Two separate codes instead of one code with a pre-built suffix, so that the
+    // engine hands i18n.js plain numbers and never assembles display text itself.
     add({
-      severity: SEV.INFO, cat: "links", code: "A_STATS",
-      params: { i: internal, e: external, nf: nofollow ? ` · ${nofollow} nofollow` : "" }
+      severity: SEV.STAT, cat: "links",
+      code: nofollow ? "A_STATS_NF" : "A_STATS",
+      params: { i: internal, e: external, nf: nofollow }
     });
 
     /* ---------- Canonical / robots / i18n ---------- */
@@ -374,9 +380,11 @@
     const warnings = issues.filter((i) => i.severity === SEV.WARN).length;
     const infos = issues.filter((i) => i.severity === SEV.INFO).length;
     const passes = issues.filter((i) => i.severity === SEV.PASS).length;
+    const stats = issues.filter((i) => i.severity === SEV.STAT).length;
+    // STAT items are measurements, not findings, so they cost nothing.
     const score = Math.max(0, Math.min(100, Math.round(100 - errors * 9 - warnings * 4 - infos * 1)));
 
-    const order = { error: 0, warning: 1, info: 2, pass: 3 };
+    const order = { error: 0, warning: 1, info: 2, stat: 3, pass: 4 };
     issues.sort((a, b) => order[a.severity] - order[b.severity]);
     issues.forEach((i) => {
       i.els = (i.els || []).filter((e) => e && e.nodeType === 1);
@@ -390,7 +398,7 @@
       title,
       brand: siteBranding(),
       score,
-      counts: { errors, warnings, infos, passes, total: issues.length },
+      counts: { errors, warnings, infos, passes, stats, total: issues.length },
       issues,
       generatedAt: new Date().toISOString()
     };

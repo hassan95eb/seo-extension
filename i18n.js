@@ -41,6 +41,7 @@
       sevWarning: "هشدار",
       sevInfo: "نکته",
       sevPass: "درست است",
+      sevStat: "آمار",
       // report page
       rTitle: "گزارش تحلیل سئو",
       rScore: "امتیاز سئو",
@@ -109,6 +110,7 @@
       sevWarning: "Warning",
       sevInfo: "Notice",
       sevPass: "Passed",
+      sevStat: "Stats",
       rTitle: "SEO Audit Report",
       rScore: "SEO Score",
       rOf100: "out of 100",
@@ -267,8 +269,12 @@
       en: { t: "{n} internal links marked nofollow", d: "Nofollow on internal links blocks your own link equity.", f: "Remove nofollow from internal links." }
     },
     A_STATS: {
-      fa: { t: "{i} لینک داخلی، {e} لینک خارجی{nf}", d: "آمار کلی لینک‌های صفحه.", f: "" },
-      en: { t: "{i} internal links, {e} external links{nf}", d: "Overall link profile of the page.", f: "" }
+      fa: { t: "{i} لینک داخلی، {e} لینک خارجی", d: "آمار کلی لینک‌های صفحه.", f: "" },
+      en: { t: "{i} internal links, {e} external links", d: "Overall link profile of the page.", f: "" }
+    },
+    A_STATS_NF: {
+      fa: { t: "{i} لینک داخلی، {e} لینک خارجی، {nf} لینک nofollow", d: "آمار کلی لینک‌های صفحه.", f: "" },
+      en: { t: "{i} internal links, {e} external links, {nf} nofollow", d: "Overall link profile of the page.", f: "" }
     },
     A_NO_INTERNAL: {
       fa: { t: "هیچ لینک داخلی در صفحه نیست", d: "لینک‌سازی داخلی برای خزش و توزیع اعتبار حیاتی است.", f: "چند لینک داخلی مرتبط اضافه کن." },

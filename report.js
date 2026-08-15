@@ -5,17 +5,34 @@
 /* SEO Lens — printable report page */
 (function () {
   const I18N = window.__SEO_LENS_I18N__;
-  const SEV_KEY = { error: "sevError", warning: "sevWarning", info: "sevInfo", pass: "sevPass" };
+  const SEV_KEY = {
+    error: "sevError", warning: "sevWarning", info: "sevInfo", pass: "sevPass", stat: "sevStat"
+  };
   const $ = (id) => document.getElementById(id);
 
+  // Must match detectLang() in content.js, so the panel and this page never disagree.
+  const detectLang = () => ((navigator.language || "").toLowerCase().startsWith("fa") ? "fa" : "en");
+
   let data = null;
-  let lang = "fa";
+  let lang = detectLang();
   let customLogo = null;
 
   const t = (k, p) => I18N.ui(lang, k, p);
   const scoreColor = (s) => (s >= 85 ? "#16a34a" : s >= 65 ? "#65a30d" : s >= 45 ? "#d97706" : "#dc2626");
   const esc = (s) => String(s == null ? "" : s)
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+
+  // brand.icon is taken from the audited page, i.e. it is untrusted input arriving on
+  // an extension page. Only real image sources are allowed through to the DOM.
+  function safeImageSrc(src) {
+    if (!src) return "";
+    const s = String(src).trim();
+    if (/^data:image\//i.test(s)) return s;
+    try {
+      const u = new URL(s, location.href);
+      return (u.protocol === "http:" || u.protocol === "https:") ? u.href : "";
+    } catch (e) { return ""; }
+  }
 
   function fmtDate(iso) {
     try {
@@ -42,7 +59,7 @@
     // header
     const brand = data.brand || {};
     const logo = $("brand-logo");
-    const src = customLogo || brand.icon || "";
+    const src = safeImageSrc(customLogo || brand.icon || "");
     if (src) { logo.src = src; logo.hidden = false; logo.onerror = () => { logo.hidden = true; }; }
     else logo.hidden = true;
     $("site-name").textContent = brand.siteName || brand.host || "";
@@ -139,11 +156,30 @@
   });
 
   /* ---------- load ---------- */
+  // The payload is read once and then deleted from chrome.storage, so an audited page's
+  // URL and text snippets never linger on disk. A per-tab sessionStorage copy keeps the
+  // report survivable across a reload of this tab, and disappears when the tab is closed.
+  const SESSION_KEY = "seoLensReportData";
   const key = new URLSearchParams(location.search).get("k") || "seoLensReport";
+
+  function readSession() {
+    try { return JSON.parse(sessionStorage.getItem(SESSION_KEY) || "null"); }
+    catch (e) { return null; }
+  }
+  function writeSession(payload) {
+    try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(payload)); }
+    catch (e) { /* quota or disabled storage — the in-memory copy still renders */ }
+  }
+
   chrome.storage.local.get([key, "seoLensLogo", "seoLensLang"], (r) => {
-    data = r[key] || null;
+    data = r[key] || readSession();
     customLogo = r.seoLensLogo || null;
-    lang = (data && data.lang) || r.seoLensLang || "fa";
+    lang = (data && data.lang) || r.seoLensLang || detectLang();
+
+    if (r[key]) {
+      writeSession(r[key]);
+      chrome.storage.local.remove(key);
+    }
     if (!data) {
       document.getElementById("sheet").innerHTML = "<p style='padding:40px;text-align:center'>No report data.</p>";
       return;

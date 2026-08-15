@@ -1,5 +1,38 @@
 # Changelog
 
+## v2.1.0
+
+Hardening pass over v2.0. No features removed. Every item below has a verification
+recipe in the README, under "v2.1 — what changed and how to check it".
+
+### Permissions
+- Removed the `content_scripts` block and `host_permissions: <all_urls>`. Nothing runs on any
+  page until the toolbar icon is clicked; injection goes through `chrome.scripting` under
+  `activeTab`, so Chrome no longer shows the "read and change all your data on all websites"
+  warning at install.
+- Dropped `web_accessible_resources` — the report page is an extension page and never needed it.
+- `isInjectable()` rewritten as an explicit allow-list; the previous scheme loop was unreachable.
+
+### Scoring
+- New `stat` severity for neutral measurements. The link-count summary used to be emitted as an
+  `info`, which silently cost every page one point and inflated the notice counter — no page
+  could score above 99. Stats are now excluded from the score and counted separately under
+  `counts.stats`.
+
+### Privacy
+- Report payloads are written under a unique key, sweep older payloads first, and are deleted
+  from `chrome.storage.local` as soon as the report page has read them. A per-tab
+  `sessionStorage` copy keeps the report alive across a refresh and disappears with the tab.
+- Favicon URLs taken from the audited page are validated before reaching the report DOM; only
+  `http:`, `https:` and `data:image/…` are accepted.
+
+### Consistency
+- Panel and report now share one language-detection path, and the detected language is persisted
+  on first run. Previously the report page fell back to Persian regardless of the panel.
+- Removed the last display strings from the engine: the Persian `console.warn` in
+  `background.js`, and the `" · N nofollow"` suffix that `audit.js` assembled itself — now the
+  separate `A_STATS_NF` message code, with the wording owned by `i18n.js`.
+
 ## v2.0.0
 
 ### Bilingual (English / Persian)

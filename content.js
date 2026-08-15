@@ -13,7 +13,9 @@
     error: { color: "#ef4444", bg: "rgba(239,68,68,.12)", icon: "✕", uiKey: "sevError" },
     warning: { color: "#f59e0b", bg: "rgba(245,158,11,.12)", icon: "!", uiKey: "sevWarning" },
     info: { color: "#3b82f6", bg: "rgba(59,130,246,.12)", icon: "i", uiKey: "sevInfo" },
-    pass: { color: "#22c55e", bg: "rgba(34,197,94,.12)", icon: "✓", uiKey: "sevPass" }
+    pass: { color: "#22c55e", bg: "rgba(34,197,94,.12)", icon: "✓", uiKey: "sevPass" },
+    // Neutral measurements — no colour weight, no filter chip, no effect on the score.
+    stat: { color: "#64748b", bg: "rgba(100,116,139,.12)", icon: "≡", uiKey: "sevStat" }
   };
 
   let host, shadow, panelOpen = false, report = null;
@@ -29,12 +31,22 @@
   const tIssue = (issue) => I18N.issue(lang, issue.code, issue.params);
 
   /* ---------- language ---------- */
+  // Shared with report.js: both sides must fall back to the same detection, otherwise
+  // the panel and the PDF report can end up in different languages.
+  const detectLang = () => ((navigator.language || "").toLowerCase().startsWith("fa") ? "fa" : "en");
+
   function loadLang(cb) {
     try {
       chrome.storage.local.get(["seoLensLang"], (r) => {
         const stored = r && r.seoLensLang;
-        if (stored === "fa" || stored === "en") lang = stored;
-        else lang = (navigator.language || "").toLowerCase().startsWith("fa") ? "fa" : "en";
+        if (stored === "fa" || stored === "en") {
+          lang = stored;
+        } else {
+          lang = detectLang();
+          // Persist the detected value straight away so every other surface
+          // (report page included) reads the same answer instead of guessing again.
+          saveLang();
+        }
         cb && cb();
       });
     } catch (e) { cb && cb(); }
@@ -183,14 +195,34 @@
     };
   }
 
+  const REPORT_PREFIX = "seoLensReport:";
+
+  // Report payloads carry the audited URL plus text snippets from the page, so they
+  // are treated as a hand-off buffer, not as saved data: each report gets its own key,
+  // any leftovers from earlier runs are swept first, and report.js deletes the key as
+  // soon as it has read it.
+  function sweepOldReports(cb) {
+    try {
+      chrome.storage.local.get(null, (all) => {
+        const stale = Object.keys(all || {}).filter(
+          (k) => k === "seoLensReport" || k.indexOf(REPORT_PREFIX) === 0
+        );
+        if (stale.length) chrome.storage.local.remove(stale, cb);
+        else cb();
+      });
+    } catch (e) { cb(); }
+  }
+
   function openPdfReport() {
     if (!report) return;
-    const key = "seoLensReport";
+    const key = REPORT_PREFIX + Date.now() + "-" + Math.random().toString(36).slice(2, 8);
     const payload = serializeReport();
     try {
-      chrome.storage.local.set({ [key]: payload }, () => {
-        chrome.runtime.sendMessage({ type: "SEO_LENS_OPEN_REPORT", key });
-        flash(t("pdfOpening"));
+      sweepOldReports(() => {
+        chrome.storage.local.set({ [key]: payload }, () => {
+          chrome.runtime.sendMessage({ type: "SEO_LENS_OPEN_REPORT", key });
+          flash(t("pdfOpening"));
+        });
       });
     } catch (e) {
       console.error("SEO Lens:", e);

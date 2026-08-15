@@ -4,16 +4,24 @@
  */
 // SEO Lens — service worker
 // Toggles the audit panel in the active tab when the toolbar icon is clicked.
+//
+// The extension declares no content_scripts and no host_permissions. Nothing runs
+// on any page until the user clicks the toolbar icon; that click grants activeTab
+// for the current tab only, which is what makes the scripting call below legal.
 
-const BAD_SCHEMES = ["chrome:", "chrome-extension:", "edge:", "about:", "devtools:", "view-source:"];
+// Hosts that block extension scripting outright, so we fail fast with a clear badge.
+const BLOCKED_HOSTS = ["chromewebstore.google.com"];
 
 function isInjectable(url) {
   if (!url) return false;
   try {
     const u = new URL(url);
-    if (BAD_SCHEMES.some((s) => u.protocol.startsWith(s.replace(":", "")) && u.protocol === s)) return false;
-    if (u.hostname === "chromewebstore.google.com" || u.hostname === "chrome.google.com" && u.pathname.startsWith("/webstore")) return false;
-    return u.protocol === "http:" || u.protocol === "https:" || u.protocol === "file:";
+    // Only ordinary web pages and local files can host the panel; everything else
+    // (chrome:, chrome-extension:, edge:, about:, devtools:, view-source:, …) is out.
+    if (u.protocol !== "http:" && u.protocol !== "https:" && u.protocol !== "file:") return false;
+    if (BLOCKED_HOSTS.includes(u.hostname)) return false;
+    if (u.hostname === "chrome.google.com" && u.pathname.startsWith("/webstore")) return false;
+    return true;
   } catch (e) {
     return false;
   }
@@ -21,6 +29,7 @@ function isInjectable(url) {
 
 async function ensureInjected(tabId) {
   try {
+    // Already injected in this tab from an earlier click? Then just reuse it.
     await chrome.tabs.sendMessage(tabId, { type: "SEO_LENS_PING" });
     return true;
   } catch (e) {
@@ -31,7 +40,9 @@ async function ensureInjected(tabId) {
       });
       return true;
     } catch (err) {
-      console.warn("SEO Lens: تزریق ناموفق", err);
+      // Typically a file:// page without "Allow access to file URLs", or a page
+      // the browser refuses to script at all.
+      console.warn("SEO Lens: injection failed", err);
       return false;
     }
   }

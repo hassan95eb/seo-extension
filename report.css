@@ -122,6 +122,7 @@ body {
 .finding.warning { border-inline-start-color: var(--warn); }
 .finding.info { border-inline-start-color: var(--info); }
 .finding.pass { border-inline-start-color: var(--pass); }
+.finding.stat { border-inline-start-color: var(--muted); }
 
 .f-top { display: flex; align-items: center; gap: 9px; }
 .f-badge {
@@ -131,6 +132,7 @@ body {
 .warning .f-badge { background: var(--warn); }
 .info .f-badge { background: var(--info); }
 .pass .f-badge { background: var(--pass); }
+.stat .f-badge { background: var(--muted); }
 .f-title { font-size: 13.5px; font-weight: 700; flex: 1; }
 .f-cat { font-size: 10.5px; color: var(--muted); flex: none; }
 .f-desc { font-size: 12px; color: #334155; line-height: 1.9; margin: 8px 0 0; }
