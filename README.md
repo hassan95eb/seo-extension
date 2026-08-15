@@ -14,6 +14,50 @@ Most SEO extensions hand you a list. This one shows you *where* — click an iss
 
 ## Install
 
+### With the script (Windows)
+
+```powershell
+irm https://raw.githubusercontent.com/hassan95eb/seo-extension/main/install.ps1 | iex
+```
+
+That downloads the latest release, unpacks it to `%LOCALAPPDATA%\SEO Lens`, checks the manifest
+is intact, and puts the folder path on your clipboard. Then finish in Chrome:
+
+1. Open `chrome://extensions`
+2. Enable **Developer mode** (top right)
+3. Click **Load unpacked** and paste the path (`Ctrl+V`)
+4. Pin the purple lens icon to your toolbar
+
+If you'd rather read the script before running it — a reasonable habit with any
+`irm | iex` one-liner — download it first:
+
+```powershell
+curl.exe -L -o install.ps1 https://raw.githubusercontent.com/hassan95eb/seo-extension/main/install.ps1
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+`-ExecutionPolicy Bypass` is needed because Windows blocks downloaded scripts by default.
+
+**Options**
+
+| Flag | Effect |
+|---|---|
+| `-Path <dir>` | Install somewhere other than `%LOCALAPPDATA%\SEO Lens` |
+| `-Version v2.1.0` | Install a specific release instead of the latest |
+| `-Force` | Reinstall even when that version is already installed |
+
+To pass a flag through the one-liner:
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/hassan95eb/seo-extension/main/install.ps1))) -Path D:\Tools\SEOLens
+```
+
+**Updating:** run the script again. It installs to the same path every time, so Chrome keeps the
+extension registered — press the reload arrow on the SEO Lens card and you're on the new version.
+Re-running when you're already current costs one API call and changes nothing.
+
+### Manually
+
 **From a release:** download the latest ZIP from [Releases](../../releases) and unzip it.
 **From source:** clone this repository.
 
@@ -23,6 +67,18 @@ Then:
 2. Enable **Developer mode**
 3. Click **Load unpacked** and select the folder
 4. Pin the purple lens icon to your toolbar
+
+### Why the last steps aren't automated
+
+Chrome used to accept a `--load-extension` command-line flag, which would have made a fully
+scripted install possible. [It was removed in Chrome 137](https://developer.chrome.com/blog/extension-news-june-2025)
+for branded Chrome builds, precisely so that no script can silently add an extension to someone's
+browser. Loading an unpacked extension is now a deliberate action in the Chrome UI, and no
+installer — this one included — can do it for you.
+
+Whichever route you take: **keep the folder where it is.** Chrome doesn't copy an unpacked
+extension, it reads it from that path on every start. Move or delete the folder and the extension
+goes with it.
 
 ## Usage
 
@@ -81,6 +137,7 @@ purpose are your language choice and your custom logo.
 ## Project layout
 
 ```
+install.ps1            one-command installer / updater for Windows
 manifest.json          extension config (MV3)
 background.js          service worker — panel toggle, badge, report tab
 i18n.js                full string catalogue for both languages (the only file to touch for a new language)

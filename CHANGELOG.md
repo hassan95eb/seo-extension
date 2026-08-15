@@ -2,6 +2,13 @@
 
 ## v2.1.0
 
+### Installer
+- Added `install.ps1`: downloads the latest release, unpacks it to a stable path, validates the
+  manifest, and copies the folder path to the clipboard. Re-running it updates in place, so
+  Chrome keeps the extension registered and only needs a reload. Chrome removed the
+  `--load-extension` flag in Chrome 137, so the final "Load unpacked" click cannot be scripted
+  by anyone — the script removes every step except that one.
+
 Hardening pass over v2.0. No features removed. Every item below has a verification
 recipe in the README, under "v2.1 — what changed and how to check it".
 
