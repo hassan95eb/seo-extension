@@ -1,0 +1,12 @@
+{
+  "name": "seo-lens-test",
+  "private": true,
+  "description": "Verification harness — drives real Chromium against local HTTPS fixtures.",
+  "scripts": {
+    "test": "node run.js",
+    "report": "node report-check.js"
+  },
+  "devDependencies": {
+    "playwright": "^1.62.0"
+  }
+}

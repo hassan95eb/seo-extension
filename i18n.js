@@ -157,16 +157,28 @@
       en: { t: "{n} <title> tags on the page", d: "Only the first one is used; the rest confuse crawlers.", f: "Remove the duplicate <title> tags." }
     },
     TITLE_SHORT: {
-      fa: { t: "Title خیلی کوتاه است ({n} کاراکتر)", d: "", f: "بین ۳۰ تا ۶۰ کاراکتر بنویس تا فضای نتایج جستجو هدر نرود." },
-      en: { t: "Title is too short ({n} characters)", d: "", f: "Aim for 30–60 characters so you use the full SERP width." }
+      fa: { t: "Title خیلی کوتاه است ({n} کاراکتر / {px} پیکسل)", d: "عرض مجاز گوگل حدود {max} پیکسل است و داری از آن استفاده نمی‌کنی.", f: "بین ۳۰ تا ۶۰ کاراکتر بنویس تا فضای نتایج جستجو هدر نرود." },
+      en: { t: "Title is too short ({n} characters / {px}px)", d: "Google gives you about {max}px and you are leaving most of it empty.", f: "Aim for 30–60 characters so you use the full SERP width." }
     },
     TITLE_LONG: {
       fa: { t: "Title خیلی بلند است ({n} کاراکتر)", d: "احتمالاً در نتایج جستجو بریده می‌شود.", f: "به زیر ۶۰ کاراکتر کوتاهش کن." },
       en: { t: "Title is too long ({n} characters)", d: "It will likely be truncated in search results.", f: "Shorten it to under 60 characters." }
     },
+    TITLE_PX_LONG: {
+      fa: {
+        t: "Title از عرض نتایج گوگل بیرون می‌زند ({px} پیکسل از {max})",
+        d: "گوگل عنوان را بر اساس عرض رندرشده می‌برد، نه تعداد کاراکتر. این عنوان {n} کاراکتر دارد و با فونت نتایج جستجو {px} پیکسل عرض می‌گیرد.",
+        f: "عنوان را کوتاه کن تا زیر {max} پیکسل بیاید — در فارسی طول کاراکتری معیار قابل اعتمادی نیست، چون اتصال حروف عرض را به‌شدت تغییر می‌دهد."
+      },
+      en: {
+        t: "Title overflows the SERP width ({px}px of {max}px)",
+        d: "Google truncates by rendered width, not character count. This title is {n} characters and measures {px}px in the SERP font.",
+        f: "Trim it below {max}px — character count is a noisy proxy, and noticeably noisier in Persian and Arabic, where cursive joining changes glyph width."
+      }
+    },
     TITLE_OK: {
-      fa: { t: "Title مناسب است ({n} کاراکتر)", d: "", f: "" },
-      en: { t: "Title length is good ({n} characters)", d: "", f: "" }
+      fa: { t: "Title مناسب است ({n} کاراکتر / {px} پیکسل)", d: "", f: "" },
+      en: { t: "Title length is good ({n} characters / {px}px)", d: "", f: "" }
     },
     DESC_MISSING: {
       fa: { t: "Meta Description وجود ندارد", d: "توضیح متا روی نرخ کلیک (CTR) اثر مستقیم دارد.", f: '<meta name="description" content="۱۲۰ تا ۱۵۵ کاراکتر توضیح جذاب"> را اضافه کن.' },
@@ -177,16 +189,28 @@
       en: { t: "{n} duplicate meta description tags", d: "Only one should exist.", f: "Remove the extras." }
     },
     DESC_SHORT: {
-      fa: { t: "Meta Description کوتاه است ({n} کاراکتر)", d: "", f: "به ۱۲۰ تا ۱۵۵ کاراکتر برسان." },
-      en: { t: "Meta description is short ({n} characters)", d: "", f: "Expand it to 120–155 characters." }
+      fa: { t: "Meta Description کوتاه است ({n} کاراکتر / {px} پیکسل)", d: "", f: "به ۱۲۰ تا ۱۵۵ کاراکتر برسان." },
+      en: { t: "Meta description is short ({n} characters / {px}px)", d: "", f: "Expand it to 120–155 characters." }
     },
     DESC_LONG: {
       fa: { t: "Meta Description بلند است ({n} کاراکتر)", d: "در نتایج جستجو با «…» بریده می‌شود.", f: "به زیر ۱۶۰ کاراکتر کوتاهش کن." },
       en: { t: "Meta description is long ({n} characters)", d: "It will be cut off with an ellipsis in search results.", f: "Trim it to under 160 characters." }
     },
+    DESC_PX_LONG: {
+      fa: {
+        t: "Meta Description از عرض اسنیپت بیرون می‌زند ({px} پیکسل از {max})",
+        d: "اسنیپت بر اساس عرض رندرشده بریده می‌شود، نه تعداد کاراکتر. این توضیح {n} کاراکتر و {px} پیکسل است.",
+        f: "مهم‌ترین جمله را اول بیاور و توضیح را زیر {max} پیکسل نگه دار."
+      },
+      en: {
+        t: "Meta description overflows the snippet width ({px}px of {max}px)",
+        d: "Snippets are cut by rendered width, not character count. This description is {n} characters and measures {px}px.",
+        f: "Front-load the important sentence and keep the description under {max}px."
+      }
+    },
     DESC_OK: {
-      fa: { t: "Meta Description مناسب است ({n} کاراکتر)", d: "", f: "" },
-      en: { t: "Meta description length is good ({n} characters)", d: "", f: "" }
+      fa: { t: "Meta Description مناسب است ({n} کاراکتر / {px} پیکسل)", d: "", f: "" },
+      en: { t: "Meta description length is good ({n} characters / {px}px)", d: "", f: "" }
     },
     H1_MISSING: {
       fa: { t: "صفحه هیچ H1 ندارد", d: "H1 مهم‌ترین سیگنال موضوع صفحه است.", f: "یک H1 یکتا شامل کلمه کلیدی اصلی اضافه کن." },
@@ -312,6 +336,70 @@
       fa: { t: "تگ html بدون attribute lang", d: "زبان صفحه مشخص نیست.", f: '<html lang="fa" dir="rtl"> بگذار.' },
       en: { t: "<html> has no lang attribute", d: "The page language is undeclared.", f: 'Set <html lang="en"> (or the right locale).' }
     },
+    DIR_MISSING: {
+      fa: {
+        t: "صفحه راست‌به‌چپ است ولی تگ html مقدار dir ندارد",
+        d: "محتوای صفحه فارسی/عربی است اما جهت متن اعلام نشده؛ مرورگر ltr فرض می‌کند و علائم نگارشی، اعداد و نام‌های لاتین جابه‌جا رندر می‌شوند.",
+        f: '‏dir="rtl" را روی خود تگ <html> بگذار، نه روی body یا با CSS.'
+      },
+      en: {
+        t: "RTL page with no dir attribute on <html>",
+        d: "The content is Persian or Arabic but the text direction is undeclared, so the browser assumes ltr and punctuation, digits and Latin names render in the wrong places.",
+        f: 'Set dir="rtl" on the <html> element itself — not on body, and not in CSS alone.'
+      }
+    },
+    DIR_ON_BODY: {
+      fa: {
+        t: "‏dir روی body تعریف شده، نه روی html",
+        d: "همه‌چیز داخل body درست می‌شود ولی خود صفحه، اسکرول‌بار و متن‌های بیرون از body همچنان ltr می‌مانند.",
+        f: 'همان dir="rtl" را به تگ <html> منتقل کن.'
+      },
+      en: {
+        t: "dir is set on <body>, not on <html>",
+        d: "Content inside body flips, but the document itself, the scrollbar and anything outside body stay ltr.",
+        f: 'Move dir="rtl" up to the <html> element.'
+      }
+    },
+    DIR_CONFLICT: {
+      fa: {
+        t: 'زبان صفحه {lang} است ولی dir روی ltr مانده',
+        d: "این ترکیب متن راست‌به‌چپ را چپ‌به‌راست می‌چیند؛ یکی از رایج‌ترین ایرادهای واقعی سایت‌های فارسی و عربی است.",
+        f: 'یا dir="rtl" بگذار یا اگر واقعاً محتوا لاتین است، مقدار lang را اصلاح کن.'
+      },
+      en: {
+        t: 'Page declares lang={lang} but dir="ltr"',
+        d: "This lays out right-to-left text left-to-right — one of the most common real defects on Persian and Arabic sites.",
+        f: 'Either set dir="rtl", or correct lang if the content really is Latin-script.'
+      }
+    },
+    DIR_RTL_LTR_CONTENT: {
+      fa: {
+        t: 'صفحه dir="rtl" دارد ولی محتوا راست‌به‌چپ نیست',
+        d: "چیدمان برعکس می‌شود بدون اینکه دلیلی داشته باشد.",
+        f: "اگر محتوا لاتین است، dir را بردار یا ltr بگذار." 
+      },
+      en: {
+        t: 'Page is dir="rtl" but the content is not RTL',
+        d: "The layout mirrors for no reason.",
+        f: 'Remove dir, or set it to ltr, if the content is Latin-script.'
+      }
+    },
+    DIR_OK: {
+      fa: { t: "جهت متن درست اعلام شده", d: "", f: "" },
+      en: { t: "Text direction is declared correctly", d: "", f: "" }
+    },
+    BIDI_UNISOLATED: {
+      fa: {
+        t: "متن دوجهته‌ی جداسازی‌نشده ({n} المان)",
+        d: "نام‌های لاتین، اعداد و نسخه‌ها داخل متن فارسی بدون جداسازی، هنگام رندر جابه‌جا می‌شوند — مثلاً «iPhone 15 Pro» به شکل «Pro 15 iPhone» دیده می‌شود.",
+        f: "بخش لاتین را داخل <bdi> بگذار، یا روی همان المان dir=\"auto\" یا unicode-bidi: isolate بگذار."
+      },
+      en: {
+        t: "Unisolated bidirectional text ({n} elements)",
+        d: 'Latin names, numbers and versions inside RTL text reorder when rendered — "iPhone 15 Pro" can display as "Pro 15 iPhone".',
+        f: 'Wrap the Latin run in <bdi>, or put dir="auto" or unicode-bidi: isolate on the element.'
+      }
+    },
     HREFLANG_NO_SELF: {
       fa: { t: "hreflang بدون ارجاع به خود صفحه", d: "{n} تگ hreflang دارد ولی self-referencing نیست.", f: "یک hreflang به خود این صفحه اضافه کن." },
       en: { t: "hreflang set is not self-referencing", d: "{n} hreflang tags exist but none points to this page.", f: "Add a self-referencing hreflang." }
@@ -399,12 +487,166 @@
     URL_UNDERSCORE: {
       fa: { t: "آدرس صفحه از آندرلاین استفاده می‌کند", d: "", f: "گوگل خط تیره (-) را جداکننده کلمه می‌داند، نه _ را." },
       en: { t: "URL uses underscores", d: "", f: "Google treats hyphens as word separators, not underscores." }
+    },
+
+    /* --- HTTP response headers (X-Robots-Tag) --- */
+    HDR_NOINDEX: {
+      fa: {
+        t: "‏noindex از طریق هدر X-Robots-Tag!",
+        d: "این noindex هیچ‌جای HTML نیست و در سورس صفحه دیده نمی‌شود؛ ابزارهایی که فقط DOM را می‌خوانند صفحه را کاملاً سالم گزارش می‌کنند در حالی که از ایندکس خارج شده است.",
+        f: "هدر X-Robots-Tag را در تنظیمات سرور، CDN یا پلاگین سئو پیدا کن و بردار." 
+      },
+      en: {
+        t: "noindex delivered as an X-Robots-Tag header!",
+        d: "This noindex appears nowhere in the HTML, so DOM-only auditors report the page as perfectly fine while it stays out of the index.",
+        f: "Find the X-Robots-Tag in your server config, CDN rules or SEO plugin and remove it."
+      }
+    },
+    HDR_NOFOLLOW: {
+      fa: {
+        t: "‏nofollow از طریق هدر X-Robots-Tag",
+        d: "همه لینک‌های این صفحه در سطح هدر nofollow شده‌اند.",
+        f: "اگر عمدی نیست، از مقدار هدر حذفش کن."
+      },
+      en: {
+        t: "nofollow delivered as an X-Robots-Tag header",
+        d: "Every link on the page is nofollowed at the header level.",
+        f: "Remove it from the header value unless it is intentional."
+      }
+    },
+    HDR_NOSNIPPET: {
+      fa: {
+        t: "‏nosnippet یا max-snippet:0 در هدر",
+        d: "این دستور اسنیپت متنی صفحه را حذف می‌کند و طبق مستندات گوگل جلوی استفاده از محتوا در AI Overviews و AI Mode را هم می‌گیرد.",
+        f: "اگر می‌خواهی صفحه در نتایج و پاسخ‌های هوش مصنوعی نقل شود، nosnippet را بردار یا max-snippet را روی ‎-1 بگذار." 
+      },
+      en: {
+        t: "nosnippet or max-snippet:0 in the response header",
+        d: "This strips the text snippet and, per Google's own robots-meta documentation, also stops the content being used as input for AI Overviews and AI Mode.",
+        f: "Remove nosnippet, or set max-snippet:-1, if you want the page quoted in results and AI answers."
+      }
+    },
+    HDR_EXPIRED: {
+      fa: {
+        t: "تاریخ unavailable_after گذشته است",
+        d: "گوگل این صفحه را بعد از تاریخ اعلام‌شده از نتایج برمی‌دارد و آن تاریخ گذشته است.",
+        f: "اگر صفحه هنوز معتبر است، دستور unavailable_after را از هدر بردار."
+      },
+      en: {
+        t: "unavailable_after date is in the past",
+        d: "Google drops the page from results after the declared date, and that date has already passed.",
+        f: "Remove the unavailable_after directive if the page is still current."
+      }
+    },
+    HDR_ROBOTS_OK: {
+      fa: { t: "هدر X-Robots-Tag محدودیتی اعمال نمی‌کند", d: "", f: "" },
+      en: { t: "X-Robots-Tag header imposes no restrictions", d: "", f: "" }
+    },
+    HDR_CANON_CONFLICT: {
+      fa: {
+        t: "‏canonical هدر با canonical داخل <head> فرق دارد",
+        d: "وقتی دو canonical متفاوت اعلام شود، گوگل هر دو را نادیده می‌گیرد و خودش تصمیم می‌گیرد.",
+        f: "یکی از این دو را حذف کن تا فقط یک آدرس canonical باقی بماند."
+      },
+      en: {
+        t: "Link header canonical contradicts the one in <head>",
+        d: "When two different canonicals are declared, Google ignores both and picks its own.",
+        f: "Remove one of them so a single canonical URL remains."
+      }
+    },
+    HDR_CANON_ONLY: {
+      fa: {
+        t: "‏canonical فقط در هدر HTTP اعلام شده",
+        d: "معتبر است، ولی در سورس صفحه دیده نمی‌شود و به‌راحتی از قلم می‌افتد.",
+        f: "برای شفافیت، همان آدرس را داخل <head> هم بگذار."
+      },
+      en: {
+        t: "Canonical is declared only in the HTTP header",
+        d: "Valid, but invisible in the page source and easy to lose track of.",
+        f: "Mirror the same URL in <head> for clarity."
+      }
+    },
+
+    /* --- Retired rich results --- */
+    SD_RETIRED: {
+      fa: {
+        t: "‏{type} دیگر هیچ ریچ‌ریزالتی تولید نمی‌کند",
+        d: "گوگل این نوع را در تاریخ {date} بازنشسته کرده است. اسکیما همچنان معتبر است و هر ولیدیتوری آن را «درست» اعلام می‌کند، ولی هیچ فیچری در نتایج جستجو نمی‌سازد.",
+        f: "اگر فقط برای ریچ‌ریزالت گذاشته شده بود حذفش کن؛ اگر بخشی از گراف داده‌ات است نگهش دار ولی رویش حساب نکن."
+      },
+      en: {
+        t: "{type} no longer produces any rich result",
+        d: "Google retired this type on {date}. The schema is still valid and every validator will call it correct, but it earns no search feature at all.",
+        f: "Remove it if it existed only for the rich result; keep it if it is part of your data graph, but do not expect a SERP feature."
+      }
+    },
+    SD_DEPRECATED: {
+      fa: {
+        t: "ریچ‌ریزالت {type} حذف شده است",
+        d: "گوگل نمایش این فیچر را از {date} متوقف کرده؛ خود نوع اسکیما همچنان معنا دارد.",
+        f: "انتظار فیچر جستجو از آن نداشته باش و اگر بی‌استفاده است پاکش کن."
+      },
+      en: {
+        t: "The {type} rich result has been removed",
+        d: "Google stopped showing this feature as of {date}; the schema type itself still has meaning.",
+        f: "Do not expect a search feature from it, and drop it if nothing else uses it."
+      }
+    },
+    SD_SEARCHBOX: {
+      fa: {
+        t: "‏Sitelinks Searchbox منسوخ شده است",
+        d: "‏SearchAction داخل WebSite از {date} دیگر جعبه جستجوی سایت‌لینک نمی‌سازد.",
+        f: "می‌توانی این بلاک را حذف کنی؛ کاری انجام نمی‌دهد."
+      },
+      en: {
+        t: "Sitelinks searchbox markup is deprecated",
+        d: "The SearchAction inside WebSite stopped producing a sitelinks search box as of {date}.",
+        f: "You can remove this block — it does nothing."
+      }
+    },
+    SD_INVISIBLE: {
+      fa: {
+        t: "{n} مقدار در اسکیما که روی صفحه دیده نمی‌شود",
+        d: "قیمت یا امتیازی که در JSON-LD اعلام شده در متن صفحه پیدا نشد. سیاست داده ساختاریافته گوگل مارک‌آپ محتوای نامرئی را ممنوع کرده و ناهمخوانی قیمت و امتیاز رایج‌ترین دلیل جریمه دستی است.",
+        f: "همان مقدار را در متن صفحه نمایش بده، یا مقدار اسکیما را با چیزی که کاربر می‌بیند یکی کن."
+      },
+      en: {
+        t: "Schema values that do not appear on the page ({n})",
+        d: "A price or rating declared in JSON-LD was not found anywhere in the page text. Google's structured-data policy forbids marking up invisible content, and price/rating mismatches are the most common cause of manual actions.",
+        f: "Show the same value in the visible content, or change the schema to match what the user sees."
+      }
     }
   };
 
+  // U+2068 FIRST STRONG ISOLATE … U+2069 POP DIRECTIONAL ISOLATE.
+  // A raw value interpolated into a sentence — a schema type, a lang code, an element
+  // name — carries its own direction. Without isolation, `lang="fa"` dropped into a
+  // Persian sentence renders with the quote marks at the wrong end. These are the plain
+  // text equivalent of <bdi>, so they survive textContent, innerHTML, the clipboard
+  // report and the PDF alike. Pure numbers are left alone: the bidi algorithm already
+  // handles digits correctly, and stray controls would show up in copied text.
+  const FSI = "⁨", PDI = "⁩";
+  function isolate(v) {
+    const s = String(v);
+    return /[^\d\s.,\/٫٬۰-۹٠-٩]/.test(s) ? FSI + s + PDI : s;
+  }
+
+  // Retirement dates arrive from the engine as language-neutral ISO strings and are
+  // rendered here, so audit.js stays free of anything locale-shaped.
+  function localDate(iso, lang) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || ""));
+    if (!m) return String(iso || "");
+    try {
+      return new Date(Date.UTC(+m[1], +m[2] - 1, +m[3])).toLocaleDateString(
+        lang === "fa" ? "fa-IR" : "en-GB",
+        { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" }
+      );
+    } catch (e) { return String(iso); }
+  }
+
   function fill(str, params) {
     if (!str) return "";
-    return str.replace(/\{(\w+)\}/g, (m, k) => (params && params[k] != null ? params[k] : ""));
+    return str.replace(/\{(\w+)\}/g, (m, k) => (params && params[k] != null ? isolate(params[k]) : ""));
   }
 
   function ui(lang, key, params) {
@@ -416,7 +658,9 @@
     const entry = M[code];
     if (!entry) return { t: code, d: "", f: "" };
     const p = entry[lang] || entry.en;
-    return { t: fill(p.t, params), d: fill(p.d, params), f: fill(p.f, params) };
+    let vals = params;
+    if (params && params.date) vals = Object.assign({}, params, { date: localDate(params.date, lang) });
+    return { t: fill(p.t, vals), d: fill(p.d, vals), f: fill(p.f, vals) };
   }
 
   window.__SEO_LENS_I18N__ = { UI, M, ui, issue, fill };

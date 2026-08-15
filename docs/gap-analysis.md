@@ -45,9 +45,13 @@ The second pattern is **trust burned by dark patterns**, not by bad analysis. ME
 
 Ordered by what I would build first.
 
+> **Status, updated with v2.2.0:** items **1**, **3** and **4** are shipped. Item 2a
+> (`nosnippet` / `max-snippet`) came along with item 3, since both read the same response.
+> Items 2b, 2c, 5, 6 and 7 are still open. The per-item headings below carry their own status.
+
 ---
 
-## 1. Make the checks correct for Persian and Arabic content
+## 1. Make the checks correct for Persian and Arabic content — ✅ shipped in v2.2.0
 
 **This is the one nobody can copy from you, and right now SEO Lens has the same gaps as everyone else.**
 
@@ -92,7 +96,7 @@ You already fixed one bidi bug in v2.0 (the `<bdi>` work in the CHANGELOG). Audi
 
 ---
 
-## 2. AI visibility — but only the parts that are actually documented
+## 2. AI visibility — but only the parts that are actually documented — ◐ 2a shipped, 2b/2c open
 
 Most "AI SEO" tooling is folklore. Three things here are documented by Google and are the real gates, and no extension surfaces them as AI-visibility signals.
 
@@ -133,7 +137,7 @@ That last row is its own widespread myth. `robots.txt` is same-origin, so `fetch
 
 ---
 
-## 3. `X-Robots-Tag` — a whole class of invisible killers
+## 3. `X-Robots-Tag` — a whole class of invisible killers — ✅ shipped in v2.2.0
 
 `noindex` delivered as an HTTP header does not appear in the DOM. SEO Lens does not check it. Neither do most competitors — Detailed (600k users) only added it recently, and does it by issuing a **second HTTP GET** of the page, which can read different headers than the response you are actually looking at.
 
@@ -143,7 +147,7 @@ Same trick as 2b: one same-origin `fetch`, read `response.headers`. Catches head
 
 ---
 
-## 4. Flag dead schema types
+## 4. Flag dead schema types — ✅ shipped in v2.2.0
 
 Google retired a pile of rich results, and huge numbers of WordPress/Yoast/RankMath sites still emit them:
 
@@ -166,7 +170,7 @@ While you are in there, the highest-value schema check nobody does: **markup tha
 
 ---
 
-## 5. Turn a finding into something a developer can act on
+## 5. Turn a finding into something a developer can act on — ○ open, next up
 
 The verified #1 user need is egress, and there is a documented handoff problem behind it: an extension says `title too long`; a developer ticket needs the URL, current value, proposed value, the component responsible, and an acceptance criterion. That translation is 100% manual today and **no extension emits a ticket.**
 
@@ -182,7 +186,7 @@ You already store everything needed for this. It is mostly formatting.
 
 ---
 
-## 6. Core Web Vitals, measured honestly
+## 6. Core Web Vitals, measured honestly — ○ open
 
 SEO Pro and Ahrefs Toolbar show CWV; most others do not. The metrics are still LCP, INP, CLS — nothing new since INP replaced FID in 2024, so anyone advertising a fourth Core Web Vital is wrong.
 
@@ -194,7 +198,7 @@ Two honesty requirements: INP only exists if the user actually interacts, and a 
 
 ---
 
-## 7. Accessibility, framed for the European Accessibility Act
+## 7. Accessibility, framed for the European Accessibility Act — ○ parked
 
 Speculative, but with a real commercial hook. The EAA has been enforceable since **28 June 2025**, covering e-commerce, banking, e-books and transport across the EU. Businesses under 10 people are exempt; everyone above that is not. The standard is EN 301 549, whose draft v4.1.0 aligns with WCAG 2.2.
 
@@ -207,6 +211,13 @@ The bridge that makes this credible rather than folklore: **Google's own Lightho
 ---
 
 # Recommendation
+
+> **Done.** 1, 3 and 4 shipped in v2.2.0 — see `CHANGELOG.md`. What follows is the original
+> recommendation, kept intact because the reasoning behind the ordering still applies to what
+> is left. One thing worth recording from the build: **1a turned out smaller than 1b and 1c,
+> exactly as the honest weighting below predicted**, and the pixel budgets needed calibrating
+> against the character guidance (60 English characters ≈ 540px, 160 ≈ 911px) rather than being
+> taken on faith.
 
 **Build 1, 3 and 4 first.** All three are small, all three fix real defects, and together they give you a release with a story: *the only page auditor that measures Persian and Arabic correctly, catches `noindex` delivered by header, and knows which rich results Google retired.*
 

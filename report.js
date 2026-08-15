@@ -102,7 +102,7 @@
     $("passes").innerHTML = passes.map((i) => {
       const m = I18N.issue(lang, i.code, i.params);
       return `<div class="pass-row"><span class="tick">✓</span><span>${esc(m.t)}</span>
-        ${i.detailRaw ? `<span class="sub"><bdi>${esc(String(i.detailRaw).slice(0, 90))}</bdi></span>` : ""}</div>`;
+        ${i.detailRaw ? `<span class="sub"><bdi dir="auto">${esc(String(i.detailRaw).slice(0, 90))}</bdi></span>` : ""}</div>`;
     }).join("");
 
     $("foot-text").textContent = t("rFooter");
@@ -114,8 +114,8 @@
     const els = (i.paths || []).slice(0, 8);
     const more = (i.count || 0) - els.length;
     const detail = m.d
-      ? esc(m.d) + (i.detailRaw ? ` — <bdi>${esc(i.detailRaw)}</bdi>` : "")
-      : (i.detailRaw ? `<bdi>${esc(i.detailRaw)}</bdi>` : "");
+      ? esc(m.d) + (i.detailRaw ? ` — <bdi dir="auto">${esc(i.detailRaw)}</bdi>` : "")
+      : (i.detailRaw ? `<bdi dir="auto">${esc(i.detailRaw)}</bdi>` : "");
     return `
     <div class="finding ${i.severity}">
       <div class="f-top">
@@ -126,7 +126,7 @@
       ${detail ? `<p class="f-desc">${detail}</p>` : ""}
       ${m.f ? `<p class="f-fix"><b>${esc(t("rFix"))}:</b> ${esc(m.f)}</p>` : ""}
       ${els.length ? `<ul class="f-els">${els.map((p) =>
-        `<li><span class="p"><bdi>${esc(p.path)}</bdi></span><span class="s"><bdi>${esc(p.text || "")}</bdi></span></li>`
+        `<li><span class="p"><bdi>${esc(p.path)}</bdi></span><span class="s"><bdi dir="auto">${esc(p.text || "")}</bdi></span></li>`
       ).join("")}${more > 0 ? `<li class="f-more">+ ${more}</li>` : ""}</ul>` : ""}
     </div>`;
   }

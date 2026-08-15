@@ -21,9 +21,11 @@
     <header class="rep-head">
       <div class="rh-left">
         <img id="brand-logo" class="brand-logo" alt="">
+        <!-- Everything lifted off the audited page carries dir="auto", so a Persian site
+             name or an English URL keeps its own direction inside an RTL report. -->
         <div class="rh-titles">
-          <h1 id="site-name"></h1>
-          <div class="rh-url" id="site-url"></div>
+          <h1 id="site-name" dir="auto"></h1>
+          <div class="rh-url" id="site-url" dir="auto"></div>
         </div>
       </div>
       <div class="rh-right">
@@ -48,8 +50,8 @@
     </section>
 
     <section class="meta-grid">
-      <div><span class="mg-k" id="k-title"></span><span class="mg-v" id="v-title"></span></div>
-      <div><span class="mg-k" id="k-url"></span><span class="mg-v mono" id="v-url"></span></div>
+      <div><span class="mg-k" id="k-title"></span><span class="mg-v" id="v-title" dir="auto"></span></div>
+      <div><span class="mg-k" id="k-url"></span><span class="mg-v mono" id="v-url" dir="auto"></span></div>
     </section>
 
     <h2 class="sec-title" id="sec-details"></h2>
@@ -62,7 +64,7 @@
       <div class="foot-line">
         <span id="foot-text"></span>
         <span class="foot-dot">•</span>
-        <span id="foot-url"></span>
+        <span id="foot-url" dir="auto"></span>
       </div>
       <div class="foot-sign">
         <span class="sign-mark">hassan mode : on</span>

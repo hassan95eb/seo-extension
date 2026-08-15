@@ -33,12 +33,14 @@ manifest.json          MV3 config. No content_scripts, no host_permissions — b
 background.js          Service worker: injects on toolbar click, badge, opens report tab.
 i18n.js                ALL display strings, both languages. The only file a new language touches.
 audit.js               Audit engine. Emits code + params only. No human-readable text. Ever.
+                       Two entry points: __SEO_LENS_AUDIT__() sync, __SEO_LENS_AUDIT_HEADERS__() async.
 content.js             Panel UI, highlight overlay, exports. Shadow DOM.
 report.html/.css/.js   Print-ready A4 report page.
 install.ps1            Windows installer/updater. Fetches latest release, preps folder.
 _locales/              Store name + description (en, fa).
 fonts/                 Vazirmatn, embedded so the PDF renders identically everywhere.
 docs/                  Screenshots + the competitive gap analysis.
+test/                  Playwright harness: HTTPS fixtures, engine assertions, screenshots.
 ```
 
 ## Hard rules — do not violate these
@@ -59,25 +61,52 @@ docs/                  Screenshots + the competitive gap analysis.
 6. **The panel lives in Shadow DOM** and must never alter the page it is auditing. Competitors
    have real reviews complaining that the extension breaks page styling; an auditing tool that
    mutates the artefact is a correctness bug.
+7. **The first paint is synchronous.** `run()` returns immediately and the panel renders from
+   it; anything needing the network goes in the async pass (`__SEO_LENS_AUDIT_HEADERS__`),
+   which mutates the same report object and calls `finalize()` to recompute score, counts and
+   ordering. Never make `run()` async — a panel that waits on a slow server is a worse tool.
+8. **Anything lifted off the audited page is isolated before it is displayed.** Values
+   interpolated into a sentence go through `fill()` in `i18n.js`, which wraps non-numeric
+   values in U+2068/U+2069 so the same string is safe in the panel, the PDF and the clipboard
+   export. Page-extracted snippets get `bdi dir="auto"`. This is the bug class the product
+   claims to fix; shipping it in our own UI would be embarrassing.
+9. **Locale-shaped rendering belongs in `i18n.js`, not the engine.** Retirement dates are
+   emitted as ISO strings and formatted per language by `issue()` — the same rule as rule 1,
+   applied to dates.
 
 ## How to test
 
-There is no test suite. Verification is done by driving real Chromium with Playwright — this
-has caught real bugs and is worth continuing:
+There are no unit tests; SEO Lens is a DOM auditor, so verification means driving a real
+browser. As of v2.2 that recipe lives in `test/` instead of in this paragraph:
 
-- Serve fixture pages over local HTTPS (a self-signed cert is fine with `ignoreHTTPSErrors`),
-  since `location.protocol` drives the HTTPS/mixed-content checks.
-- Inject `i18n.js` + `audit.js` with `addScriptTag` and call `window.__SEO_LENS_AUDIT__()`.
+```bash
+cd test && npm install
+openssl req -x509 -newkey rsa:2048 -keyout key.pem -out cert.pem -days 30 -nodes \
+  -subj "/CN=localhost" -addext "subjectAltName=DNS:localhost"
+npm test        # engine assertions + panel screenshots, non-zero exit on failure
+npm run report  # renders report.html in both languages and screenshots it
+```
+
+The rules behind it, if you extend it:
+
+- Serve fixtures over local HTTPS (self-signed is fine with `ignoreHTTPSErrors`), since
+  `location.protocol` drives the HTTPS/mixed-content checks, and response headers can only be
+  exercised from a real server.
+- Inject `i18n.js` + `audit.js` with `addScriptTag`, call `window.__SEO_LENS_AUDIT__()`, then
+  `await window.__SEO_LENS_AUDIT_HEADERS__(report)` for the header checks.
 - For panel/export tests, stub `chrome.storage.local` and `chrome.runtime` before injecting
   `content.js`, then invoke the captured `onMessage` listener with `SEO_LENS_TOGGLE`.
-- Screenshot the panel and the report and actually look at them.
-- Keep a deliberately clean fixture page — it should score exactly 100.
+- Screenshot the panel and the report and actually look at them — the RTL ones especially.
+- The clean fixture must score exactly **100**. That invariant broke once already; it is the
+  first assertion in the run.
+- Every check needs a negative fixture too. `rtl-good.html` and `headers-ok.html` exist because
+  a check that fires on correct pages is worse than no check.
 
 ## Release process
 
 1. Bump `version` in `manifest.json`, add a `CHANGELOG.md` entry.
 2. Build a clean ZIP — extension files only. **Exclude** `README*.md`, `CHANGELOG.md`,
-   `install.ps1`, `docs/`, `.git`. `manifest.json` must sit at the ZIP root.
+   `install.ps1`, `docs/`, `test/`, `.git`. `manifest.json` must sit at the ZIP root.
 3. Commit, tag `vX.Y.Z`, `git push origin main --follow-tags`.
 4. **Create a GitHub Release and attach the ZIP.** A git tag is not a Release — `install.ps1`
    reads `/releases/latest` from the API and 404s if no Release is published.
@@ -95,26 +124,52 @@ file as modified.
 
 ## Current state
 
-- **v2.1.0** shipped: minimal permissions, `stat` severity so 100/100 is reachable, report data
-  deleted after read, unified language detection, engine free of display strings.
+- **v2.2.0** shipped: gap-analysis items 1, 3 and 4. Pixel-measured titles and descriptions,
+  `dir` checked as a defect, unisolated bidi runs outlined on the page, bidi isolation
+  throughout the panel and PDF, `X-Robots-Tag` and `Link:` canonical read from the response
+  headers, retired rich-result types flagged with their retirement dates, and schema values
+  that contradict the visible page. `test/` holds the Playwright harness.
+- **v2.1.0**: minimal permissions, `stat` severity so 100/100 is reachable, report data deleted
+  after read, unified language detection, engine free of display strings.
 - `install.ps1` added for one-command install/update on Windows.
 
 ## What's next
 
-`docs/gap-analysis.md` holds a researched, prioritised list of what to build, based on reading
-the source of ten competing extensions. Short version, in order:
+`docs/gap-analysis.md` holds the researched, prioritised list, based on reading the source of
+ten competing extensions. Items 1, 3 and 4 are done. What remains, in order:
 
-1. **RTL correctness** — check `dir` as a defect, bidi-isolate extracted text in the panel and
-   PDF, measure titles in pixels rather than characters. Zero competitors do any of it.
-2. **AI visibility (documented parts only)** — `nosnippet`/`max-snippet` silently excluding a
-   page from AI Overviews; raw-HTML vs rendered-DOM diff, because AI crawlers do not run JS;
-   the `GPTBot` vs `OAI-SearchBot` robots.txt distinction.
-3. **`X-Robots-Tag`** — header-delivered `noindex` is invisible in the DOM. One same-origin
-   `fetch` gets it, and the same fetch powers item 2.
-4. **Dead schema types** — `FAQPage` stopped producing rich results on 7 May 2026, `HowTo` in
-   2023. A lookup table against `@type`, which is already extracted.
-5. **Developer hand-off output** — a finding formatted as a paste-ready ticket. Nobody does this,
-   and the #1 verified user request across the category is getting data *out*.
+1. **AI visibility (documented parts only)** — gap-analysis item 2. `nosnippet`/`max-snippet`
+   is already handled by the header pass; what is left is 2b, the raw-HTML vs rendered-DOM
+   diff (AI crawlers do not execute JavaScript, so a JS-heavy page can rank in Google and be
+   invisible to ChatGPT and Perplexity), and 2c, the `GPTBot` vs `OAI-SearchBot` robots.txt
+   distinction. **`auditHeaders()` already performs the fetch 2b needs** — switch its GET
+   fallback to always read `response.text()` and diff it against the DOM.
+2. **Developer hand-off output** — gap-analysis item 5. A finding formatted as a paste-ready
+   ticket, CSV export of the findings and of the images/links tables, a "copy all errors"
+   button. Nobody in the category does the ticket format, and the #1 verified user request is
+   getting data *out*. Everything needed is already stored; it is formatting work.
+3. **Core Web Vitals with visual attribution** — gap-analysis item 6. The interesting part is
+   that `LargestContentfulPaint.element` and `LayoutShiftAttribution.node` expose the offending
+   element, which the highlight system can outline. Say plainly in the UI that a single visit
+   is not field data.
 
 Do **not** build: an llms.txt score, or any "schema → AI citation" claim. Google's own docs say
 Search ignores llms.txt and that no special schema is needed for AI features.
+
+## Judgement calls worth not re-litigating
+
+- **Pixel budgets are 580px/920px at 20px/13px Arial.** Calibrated, not guessed: 60 English
+  characters measure ~540px and 160 characters ~911px, which lines up with the character
+  guidance the whole industry publishes. Change the budget and the font together or not at all.
+- **The pixel claim is deliberately modest.** Measurement showed Persian characters are ~7%
+  *narrower* than English at the same size, and ZWNJ inflation is only 1–3 characters. The real
+  effect is variance — Persian pixel width is ~1.6× more variable at identical character count.
+  The UI says that, and should keep saying that rather than overclaiming.
+- **`dir` findings only fire on pages that are actually RTL**, by declared language or by the
+  script of their own text. `dir` is genuinely optional on an LTR page and flagging it there
+  would be noise.
+- **`SD_INVISIBLE` only tests numbers**, and only flags when the value is absent entirely.
+  `name` was considered and rejected — it is abbreviated too often to test without false
+  positives, and a false accusation of policy violation is expensive.
+- **Ambiguous retired types are `info`, not `warning`.** `Course` and `LearningResource` still
+  have non-rich-result uses, so they sit in `DEPRECATED`; only unambiguous ones cost 4 points.

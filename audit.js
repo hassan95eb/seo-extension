@@ -21,6 +21,64 @@
 
   const txt = (s) => (s || "").replace(/\s+/g, " ").trim();
 
+  /* ---------- bidi / RTL helpers ---------- */
+
+  // Arabic, Hebrew, Syriac, Thaana, plus the Arabic presentation blocks.
+  const RTL_CHARS = /[֐-׿؀-ۿ܀-ݏݐ-ݿހ-޿ࢠ-ࣿיִ-﷿ﹰ-﻿]/;
+  // A run of Latin letters or digits long enough to be reordered visibly inside RTL text.
+  const LTR_RUN = /[A-Za-z][A-Za-z0-9._-]+|\d{2,}/;
+  const RTL_LANGS = ["ar", "fa", "he", "iw", "ur", "ps", "sd", "ug", "yi", "dv", "ku", "ckb"];
+  const ZWNJ = /‌/g;
+
+  const hasRtl = (s) => RTL_CHARS.test(s || "");
+  const langIsRtl = (code) => {
+    const base = String(code || "").toLowerCase().split(/[-_]/)[0];
+    return base ? RTL_LANGS.indexOf(base) !== -1 : false;
+  };
+
+  // Character count as a human would count it: ZWNJ is a joining control, not a letter,
+  // and counting it inflates a typical Persian title by 1–3 characters.
+  const charLen = (s) => (s || "").replace(ZWNJ, "").length;
+
+  // Google truncates SERP titles and descriptions by rendered pixel width, not by
+  // character count. Character count is a proxy, and it is roughly 1.6x noisier in
+  // Persian than in English because cursive joining changes glyph width dramatically.
+  let _ctx = null;
+  function measurePx(str, font) {
+    if (!str) return 0;
+    try {
+      if (_ctx === null) _ctx = document.createElement("canvas").getContext("2d") || false;
+      if (!_ctx) return 0;
+      _ctx.font = font;
+      return Math.round(_ctx.measureText(str.replace(ZWNJ, "")).width);
+    } catch (e) { return 0; }
+  }
+  // Google renders desktop SERP titles at ~20px and snippets at ~13px in a system sans.
+  // The font stack keeps Persian and Arabic text out of a Latin-only fallback face.
+  const TITLE_FONT = '20px Arial, "Segoe UI", Tahoma, Vazirmatn, sans-serif';
+  const DESC_FONT = '13px Arial, "Segoe UI", Tahoma, Vazirmatn, sans-serif';
+  const TITLE_PX_MAX = 580;
+  const DESC_PX_MAX = 920;
+
+  // Latin/digit runs embedded in RTL text reorder unless the run is isolated. An element
+  // counts as handled if it, or something inside it, uses bdi, dir, bdo or unicode-bidi.
+  function bidiIsolated(el) {
+    if (!el) return false;
+    if (el.hasAttribute("dir")) return true;
+    if (el.querySelector("bdi, bdo, [dir]")) return true;
+    try {
+      if (/isolate|plaintext/.test(getComputedStyle(el).unicodeBidi || "")) return true;
+    } catch (e) { /* ignore */ }
+    return false;
+  }
+
+  // Persian and Arabic-Indic digits normalised to ASCII, so "۱۲۹۹" and "1299" compare equal.
+  function normalizeDigits(s) {
+    return String(s == null ? "" : s)
+      .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x06f0))
+      .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660));
+  }
+
   const isVisible = (el) => {
     if (!el || !el.getBoundingClientRect) return false;
     const r = el.getBoundingClientRect();
@@ -103,10 +161,19 @@
       if (titles.length > 1) {
         add({ severity: SEV.ERROR, cat: "core", code: "TITLE_DUP", params: { n: titles.length }, els: titles.slice(1) });
       }
-      const L = title.length;
-      if (L < 30) add({ severity: SEV.WARN, cat: "core", code: "TITLE_SHORT", params: { n: L }, detailRaw: title, els: titles });
-      else if (L > 60) add({ severity: SEV.WARN, cat: "core", code: "TITLE_LONG", params: { n: L }, detailRaw: title, els: titles });
-      else add({ severity: SEV.PASS, cat: "core", code: "TITLE_OK", params: { n: L }, detailRaw: title, els: titles });
+      // Pixels decide, characters inform. A 70-character Persian title that fits inside
+      // 580px is not truncated, and a 55-character English title in wide glyphs can be.
+      const L = charLen(title);
+      const px = measurePx(title, TITLE_FONT);
+      const p = { n: L, px, max: TITLE_PX_MAX };
+      // px === 0 means canvas is unavailable (blocked 2d context); fall back to characters.
+      if (px > TITLE_PX_MAX || (!px && L > 60)) {
+        add({ severity: SEV.WARN, cat: "core", code: px ? "TITLE_PX_LONG" : "TITLE_LONG", params: p, detailRaw: title, els: titles });
+      } else if (L < 30) {
+        add({ severity: SEV.WARN, cat: "core", code: "TITLE_SHORT", params: p, detailRaw: title, els: titles });
+      } else {
+        add({ severity: SEV.PASS, cat: "core", code: "TITLE_OK", params: p, detailRaw: title, els: titles });
+      }
     }
 
     /* ---------- Meta description ---------- */
@@ -118,10 +185,16 @@
       if (descs.length > 1) {
         add({ severity: SEV.WARN, cat: "core", code: "DESC_DUP", params: { n: descs.length }, els: descs.slice(1) });
       }
-      const L = desc.length;
-      if (L < 70) add({ severity: SEV.WARN, cat: "core", code: "DESC_SHORT", params: { n: L }, detailRaw: desc, els: descs });
-      else if (L > 160) add({ severity: SEV.WARN, cat: "core", code: "DESC_LONG", params: { n: L }, detailRaw: desc, els: descs });
-      else add({ severity: SEV.PASS, cat: "core", code: "DESC_OK", params: { n: L }, detailRaw: desc, els: descs });
+      const L = charLen(desc);
+      const px = measurePx(desc, DESC_FONT);
+      const p = { n: L, px, max: DESC_PX_MAX };
+      if (px > DESC_PX_MAX || (!px && L > 160)) {
+        add({ severity: SEV.WARN, cat: "core", code: px ? "DESC_PX_LONG" : "DESC_LONG", params: p, detailRaw: desc, els: descs });
+      } else if (L < 70) {
+        add({ severity: SEV.WARN, cat: "core", code: "DESC_SHORT", params: p, detailRaw: desc, els: descs });
+      } else {
+        add({ severity: SEV.PASS, cat: "core", code: "DESC_OK", params: p, detailRaw: desc, els: descs });
+      }
     }
 
     /* ---------- Headings ---------- */
@@ -265,8 +338,59 @@
     if (robotsContent.includes("nofollow")) {
       add({ severity: SEV.WARN, cat: "index", code: "META_NOFOLLOW", detailRaw: robotsContent, els: robots });
     }
-    if (!doc.documentElement.getAttribute("lang")) {
+    const htmlLang = doc.documentElement.getAttribute("lang");
+    if (!htmlLang) {
       add({ severity: SEV.WARN, cat: "index", code: "NO_LANG", els: [doc.documentElement] });
+    }
+
+    /* ---------- Text direction ----------
+     * Missing or contradictory `dir` is one of the most common real defects on Persian,
+     * Arabic, Hebrew and Urdu pages, and no competing extension reads the attribute at all.
+     * Only reported when the page actually is RTL, either by declared language or by
+     * the script its own text is written in — `dir` is genuinely optional on LTR pages.
+     */
+    const htmlDir = (doc.documentElement.getAttribute("dir") || "").toLowerCase();
+    const bodyDir = doc.body ? (doc.body.getAttribute("dir") || "").toLowerCase() : "";
+    const sampleText = doc.body ? txt(doc.body.innerText || doc.body.textContent).slice(0, 4000) : "";
+    const rtlChars = (sampleText.match(new RegExp(RTL_CHARS.source, "g")) || []).length;
+    const contentIsRtl = rtlChars > 40 || (sampleText.length > 0 && rtlChars / sampleText.length > 0.2);
+    const pageIsRtl = langIsRtl(htmlLang) || contentIsRtl;
+
+    if (langIsRtl(htmlLang) && htmlDir === "ltr") {
+      add({
+        severity: SEV.ERROR, cat: "index", code: "DIR_CONFLICT",
+        params: { lang: htmlLang }, detailRaw: `lang="${htmlLang}" dir="ltr"`, els: [doc.documentElement]
+      });
+    } else if (pageIsRtl && !htmlDir && bodyDir === "rtl") {
+      add({ severity: SEV.WARN, cat: "index", code: "DIR_ON_BODY", els: [doc.documentElement] });
+    } else if (pageIsRtl && !htmlDir) {
+      add({ severity: SEV.WARN, cat: "index", code: "DIR_MISSING", els: [doc.documentElement] });
+    } else if (pageIsRtl && htmlDir === "rtl") {
+      add({ severity: SEV.PASS, cat: "index", code: "DIR_OK", detailRaw: `dir="rtl"`, els: [doc.documentElement] });
+    } else if (!pageIsRtl && htmlDir === "rtl") {
+      add({ severity: SEV.WARN, cat: "index", code: "DIR_RTL_LTR_CONTENT", els: [doc.documentElement] });
+    }
+
+    // Latin brand names, version numbers and prices inside RTL text reorder on render
+    // unless the run is isolated. Headings and link labels are where it is most visible,
+    // and both are elements we can outline on the page.
+    if (pageIsRtl) {
+      const mixed = Array.from(doc.querySelectorAll("h1,h2,h3,h4,h5,h6,a,li,button,figcaption"))
+        .filter((el) => {
+          if (!isVisible(el)) return false;
+          if (el.querySelector("h1,h2,h3,h4,h5,h6,a,li,button,figcaption")) return false;
+          const s = txt(el.textContent);
+          if (!s || s.length > 300) return false;
+          return hasRtl(s) && LTR_RUN.test(s) && !bidiIsolated(el);
+        });
+      if (mixed.length) {
+        add({
+          severity: SEV.INFO, cat: "content", code: "BIDI_UNISOLATED",
+          params: { n: mixed.length },
+          detailRaw: mixed.slice(0, 3).map((e) => txt(e.textContent).slice(0, 60)).join(" · "),
+          els: mixed
+        });
+      }
     }
     const hreflangs = Array.from(doc.querySelectorAll('link[rel="alternate" i][hreflang]'));
     if (hreflangs.length) {
@@ -297,22 +421,119 @@
     if (!ldjson.length && !microdata) {
       add({ severity: SEV.WARN, cat: "sd", code: "SD_MISSING" });
     } else {
-      const broken = [], types = [];
+      const broken = [], types = [], nodes = [];
+      // Every node in the graph, kept with the script it came from so a dead type can be
+      // outlined rather than merely listed.
+      const walk = (d, el, depth) => {
+        if (!d || typeof d !== "object" || depth > 6) return;
+        if (Array.isArray(d)) { d.forEach((x) => walk(x, el, depth + 1)); return; }
+        if (d["@type"]) {
+          nodes.push({ node: d, el });
+          [].concat(d["@type"]).forEach((tp) => { if (typeof tp === "string") types.push(tp); });
+        }
+        if (d["@graph"]) walk(d["@graph"], el, depth + 1);
+        ["mainEntity", "itemListElement", "hasPart", "about", "subjectOf"].forEach((k) => {
+          if (d[k]) walk(d[k], el, depth + 1);
+        });
+      };
       ldjson.forEach((s) => {
-        try {
-          const data = JSON.parse(s.textContent);
-          [].concat(data).forEach((d) => {
-            if (!d) return;
-            if (d["@type"]) types.push([].concat(d["@type"]).join("/"));
-            if (d["@graph"]) [].concat(d["@graph"]).forEach((g) => g && g["@type"] && types.push([].concat(g["@type"]).join("/")));
-          });
-        } catch (e) { broken.push(s); }
+        try { walk(JSON.parse(s.textContent), s, 0); }
+        catch (e) { broken.push(s); }
       });
       if (broken.length) add({ severity: SEV.ERROR, cat: "sd", code: "SD_INVALID", params: { n: broken.length }, els: broken });
       if (types.length) {
         add({
           severity: SEV.PASS, cat: "sd", code: "SD_OK",
           detailRaw: Array.from(new Set(types)).slice(0, 8).join(" · "), els: ldjson
+        });
+      }
+
+      /* --- Retired rich results ---
+       * Validators check schema.org conformance, not Google feature eligibility, so a
+       * retired type validates cleanly for ever while producing no SERP feature at all.
+       * Dates are ISO and language-neutral; i18n.js formats them per locale.
+       */
+      const RETIRED = {          // no rich result of any kind any more
+        FAQPage: "2026-05-07",
+        HowTo: "2023-08-08",
+        SpecialAnnouncement: "2025-09-01",
+        Occupation: "2025-09-01",
+        Vehicle: "2025-09-01",
+        Quiz: "2026-01-01"
+      };
+      const DEPRECATED = {       // type still meaningful, its rich result is gone
+        Course: "2025-09-01",
+        ClaimReview: "2025-06-01",
+        LearningResource: "2025-09-01"
+      };
+      const typeEls = {};
+      nodes.forEach((n) => {
+        [].concat(n.node["@type"]).forEach((tp) => {
+          if (typeof tp !== "string") return;
+          (typeEls[tp] = typeEls[tp] || []).push(n.el);
+        });
+      });
+      Object.keys(RETIRED).forEach((tp) => {
+        if (typeEls[tp]) {
+          add({
+            severity: SEV.WARN, cat: "sd", code: "SD_RETIRED",
+            params: { type: tp, date: RETIRED[tp] }, els: Array.from(new Set(typeEls[tp]))
+          });
+        }
+      });
+      Object.keys(DEPRECATED).forEach((tp) => {
+        if (typeEls[tp]) {
+          add({
+            severity: SEV.INFO, cat: "sd", code: "SD_DEPRECATED",
+            params: { type: tp, date: DEPRECATED[tp] }, els: Array.from(new Set(typeEls[tp]))
+          });
+        }
+      });
+      // Sitelinks searchbox: the dead part is the SearchAction, not the WebSite type.
+      const searchbox = nodes.filter((n) => {
+        const t = [].concat(n.node["@type"]).join("/");
+        if (!/WebSite/.test(t)) return false;
+        return [].concat(n.node.potentialAction || []).some(
+          (a) => a && /SearchAction/.test([].concat(a["@type"] || "").join("/"))
+        );
+      });
+      if (searchbox.length) {
+        add({
+          severity: SEV.INFO, cat: "sd", code: "SD_SEARCHBOX",
+          params: { date: "2024-11-21" }, els: Array.from(new Set(searchbox.map((n) => n.el)))
+        });
+      }
+
+      /* --- Markup that contradicts the visible page ---
+       * Google's structured-data policy forbids marking up content that is not visible,
+       * and price/rating mismatches are what draw manual actions. Only numeric values are
+       * tested, and Persian and Arabic-Indic digits are normalised first, so a page that
+       * prints ۱٬۲۹۹٬۰۰۰ against "1299000" in JSON-LD is not falsely accused.
+       */
+      const bodyText = doc.body ? normalizeDigits(doc.body.innerText || doc.body.textContent || "").replace(/[\s,٬،]/g, "") : "";
+      const invisible = [];
+      if (bodyText) {
+        const checkNum = (val, el, key) => {
+          if (val == null) return;
+          const raw = normalizeDigits(val).replace(/[\s,٬،]/g, "");
+          if (!/^\d+(\.\d+)?$/.test(raw)) return;
+          const trimmed = raw.replace(/\.0+$/, "").replace(/(\.\d*[1-9])0+$/, "$1");
+          if (bodyText.indexOf(raw) === -1 && bodyText.indexOf(trimmed) === -1) {
+            invisible.push({ el, txt: `${key}: ${raw}` });
+          }
+        };
+        nodes.forEach((n) => {
+          [].concat(n.node.offers || []).forEach((o) => { if (o) checkNum(o.price, n.el, "price"); });
+          const ar = n.node.aggregateRating;
+          if (ar) checkNum(ar.ratingValue, n.el, "ratingValue");
+        });
+      }
+      if (invisible.length) {
+        add({
+          severity: SEV.WARN, cat: "sd", code: "SD_INVISIBLE",
+          params: { n: invisible.length },
+          detailRaw: invisible.slice(0, 4).map((x) => x.txt).join(" · "),
+          els: Array.from(new Set(invisible.map((x) => x.el)))
         });
       }
     }
@@ -375,14 +596,28 @@
     if (/[A-Z]/.test(path)) add({ severity: SEV.INFO, cat: "tech", code: "URL_UPPER", detailRaw: path });
     if (path.includes("_")) add({ severity: SEV.INFO, cat: "tech", code: "URL_UNDERSCORE", detailRaw: path });
 
-    /* ---------- Scoring ---------- */
+    return finalize({
+      url: location.href,
+      title,
+      brand: siteBranding(),
+      issues,
+      generatedAt: new Date().toISOString()
+    });
+  }
+
+  /* ---------- Scoring ----------
+   * Split out of run() because the header pass (below) adds findings after the first
+   * paint and the score, counts and ordering all have to be recomputed from scratch.
+   */
+  function finalize(report) {
+    const issues = report.issues;
     const errors = issues.filter((i) => i.severity === SEV.ERROR).length;
     const warnings = issues.filter((i) => i.severity === SEV.WARN).length;
     const infos = issues.filter((i) => i.severity === SEV.INFO).length;
     const passes = issues.filter((i) => i.severity === SEV.PASS).length;
     const stats = issues.filter((i) => i.severity === SEV.STAT).length;
     // STAT items are measurements, not findings, so they cost nothing.
-    const score = Math.max(0, Math.min(100, Math.round(100 - errors * 9 - warnings * 4 - infos * 1)));
+    report.score = Math.max(0, Math.min(100, Math.round(100 - errors * 9 - warnings * 4 - infos * 1)));
 
     const order = { error: 0, warning: 1, info: 2, stat: 3, pass: 4 };
     issues.sort((a, b) => order[a.severity] - order[b.severity]);
@@ -392,17 +627,112 @@
       i.count = i.els.length;
       i.highlightable = i.els.some((e) => !["TITLE", "META", "LINK", "SCRIPT", "HEAD"].includes(e.tagName));
     });
+    report.counts = { errors, warnings, infos, passes, stats, total: issues.length };
+    return report;
+  }
 
-    return {
-      url: location.href,
-      title,
-      brand: siteBranding(),
-      score,
-      counts: { errors, warnings, infos, passes, stats, total: issues.length },
-      issues,
-      generatedAt: new Date().toISOString()
-    };
+  /* ---------- HTTP header pass ----------
+   * `noindex` delivered as an X-Robots-Tag header never appears in the DOM, so every
+   * DOM-only auditor reports the page as perfectly fine while it is deindexed. One
+   * same-origin request gets it. HEAD first because it costs no body; a GET fallback
+   * covers servers that reject HEAD.
+   *
+   * Runs after run() rather than inside it: the panel paints immediately from the
+   * synchronous audit and these findings are merged in when the response lands.
+   */
+  const ROBOTS_UAS = ["googlebot", "googlebot-news", "google", "otherbot"];
+
+  function parseXRobots(value) {
+    const out = { noindex: false, nofollow: false, nosnippet: false, maxSnippet: null, unavailable: null, raw: value };
+    String(value || "").split(",").forEach((part) => {
+      let rule = part.trim();
+      if (!rule) return;
+      // A rule may be scoped to a user agent: `googlebot: noindex`.
+      const m = rule.match(/^([a-z0-9\-_]+)\s*:\s*(.+)$/i);
+      let directive = rule;
+      if (m && !/^(max-snippet|max-image-preview|max-video-preview|unavailable_after)$/i.test(m[1])) {
+        if (ROBOTS_UAS.indexOf(m[1].toLowerCase()) === -1) return; // scoped to a bot we do not report on
+        directive = m[2].trim();
+      }
+      const d = directive.toLowerCase();
+      if (d === "noindex" || d === "none") out.noindex = true;
+      if (d === "nofollow" || d === "none") out.nofollow = true;
+      if (d === "nosnippet") out.nosnippet = true;
+      const ms = directive.match(/^max-snippet\s*:\s*(-?\d+)$/i);
+      if (ms) out.maxSnippet = Number(ms[1]);
+      const ua = directive.match(/^unavailable_after\s*:\s*(.+)$/i);
+      if (ua) out.unavailable = ua[1].trim();
+    });
+    return out;
+  }
+
+  async function fetchHeaders(url) {
+    const opts = { credentials: "include", redirect: "follow", cache: "no-store" };
+    try {
+      const head = await fetch(url, Object.assign({ method: "HEAD" }, opts));
+      if (head.ok || head.status === 304) return head;
+    } catch (e) { /* fall through to GET */ }
+    return fetch(url, Object.assign({ method: "GET" }, opts));
+  }
+
+  async function auditHeaders(report) {
+    if (!/^https?:$/.test(location.protocol)) return report;
+    let res;
+    try { res = await fetchHeaders(location.href); }
+    catch (e) { return report; }
+    if (!res || !res.headers) return report;
+
+    const issues = report.issues;
+    let idc = issues.length;
+    const add = (o) => issues.push(Object.assign(
+      { id: "h" + ++idc, els: [], params: {}, detailRaw: "" }, o
+    ));
+
+    const xr = res.headers.get("x-robots-tag");
+    if (xr) {
+      const r = parseXRobots(xr);
+      if (r.noindex) add({ severity: SEV.ERROR, cat: "index", code: "HDR_NOINDEX", detailRaw: xr });
+      if (r.nofollow) add({ severity: SEV.WARN, cat: "index", code: "HDR_NOFOLLOW", detailRaw: xr });
+      if (r.nosnippet || r.maxSnippet === 0) {
+        add({ severity: SEV.WARN, cat: "index", code: "HDR_NOSNIPPET", detailRaw: xr });
+      }
+      if (r.unavailable) {
+        const when = Date.parse(r.unavailable);
+        if (!isNaN(when) && when < Date.now()) {
+          add({ severity: SEV.ERROR, cat: "index", code: "HDR_EXPIRED", detailRaw: r.unavailable });
+        }
+      }
+      if (!r.noindex && !r.nofollow && !r.nosnippet && r.maxSnippet !== 0) {
+        add({ severity: SEV.PASS, cat: "index", code: "HDR_ROBOTS_OK", detailRaw: xr });
+      }
+    }
+
+    // A canonical delivered as a Link header outranks nothing — it competes with the one
+    // in <head>, and when the two disagree Google ignores both.
+    const link = res.headers.get("link");
+    if (link) {
+      const m = link.match(/<([^>]+)>\s*;[^,]*rel\s*=\s*"?canonical"?/i);
+      if (m) {
+        const headCanon = document.querySelector('link[rel="canonical" i]');
+        let hdrUrl = "", headUrl = "";
+        try { hdrUrl = new URL(m[1].trim(), location.href).href; } catch (e) { hdrUrl = m[1].trim(); }
+        if (headCanon) {
+          try { headUrl = new URL(headCanon.getAttribute("href") || "", location.href).href; } catch (e) { /* ignore */ }
+        }
+        if (headUrl && hdrUrl && headUrl !== hdrUrl) {
+          add({
+            severity: SEV.WARN, cat: "index", code: "HDR_CANON_CONFLICT",
+            detailRaw: hdrUrl, els: headCanon ? [headCanon] : []
+          });
+        } else if (!headCanon) {
+          add({ severity: SEV.INFO, cat: "index", code: "HDR_CANON_ONLY", detailRaw: hdrUrl });
+        }
+      }
+    }
+
+    return finalize(report);
   }
 
   window.__SEO_LENS_AUDIT__ = run;
+  window.__SEO_LENS_AUDIT_HEADERS__ = auditHeaders;
 })();

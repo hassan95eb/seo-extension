@@ -68,7 +68,7 @@ body {
 .brand-logo[hidden] { display: none; }
 .rh-titles { min-width: 0; }
 .rh-titles h1 { margin: 0; font-size: 22px; line-height: 1.4; }
-.rh-url { color: var(--muted); font-size: 12px; margin-top: 3px; word-break: break-all; direction: ltr; }
+.rh-url { color: var(--muted); font-size: 12px; margin-top: 3px; word-break: break-all; direction: ltr; unicode-bidi: isolate; }
 .rh-right { text-align: end; flex: none; }
 .rep-kicker { font-size: 13px; font-weight: 700; color: var(--brand); }
 .rep-date { font-size: 11.5px; color: var(--muted); margin-top: 4px; }
@@ -103,7 +103,9 @@ body {
 .meta-grid > div { display: flex; gap: 10px; padding: 5px 0; }
 .meta-grid > div + div { border-top: 1px dashed var(--line); }
 .mg-k { color: var(--muted); flex: none; min-width: 92px; }
-.mg-v { word-break: break-word; }
+/* Values below come from the audited page; isolate them so a Latin URL or an English
+   brand name cannot reorder against the surrounding RTL layout. */
+.mg-v { word-break: break-word; unicode-bidi: isolate; }
 .mono { font-family: ui-monospace, Menlo, Consolas, monospace; direction: ltr; font-size: 11px; }
 
 /* ---------- sections ---------- */
@@ -133,9 +135,9 @@ body {
 .info .f-badge { background: var(--info); }
 .pass .f-badge { background: var(--pass); }
 .stat .f-badge { background: var(--muted); }
-.f-title { font-size: 13.5px; font-weight: 700; flex: 1; }
+.f-title { font-size: 13.5px; font-weight: 700; flex: 1; unicode-bidi: isolate; }
 .f-cat { font-size: 10.5px; color: var(--muted); flex: none; }
-.f-desc { font-size: 12px; color: #334155; line-height: 1.9; margin: 8px 0 0; }
+.f-desc { font-size: 12px; color: #334155; line-height: 1.9; margin: 8px 0 0; unicode-bidi: isolate; }
 .f-fix {
   font-size: 12px; line-height: 1.9; margin: 9px 0 0; padding: 8px 11px;
   background: #f5f3ff; border-radius: 8px; color: #4c1d95;
@@ -146,8 +148,8 @@ body {
   font-size: 10.5px; padding: 4px 8px; background: #f8fafc; border-radius: 5px;
   margin-bottom: 3px; display: flex; gap: 10px; justify-content: space-between;
 }
-.f-els .p { font-family: ui-monospace, Menlo, Consolas, monospace; color: #0369a1; direction: ltr; }
-.f-els .s { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 45%; }
+.f-els .p { font-family: ui-monospace, Menlo, Consolas, monospace; color: #0369a1; direction: ltr; unicode-bidi: isolate; }
+.f-els .s { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 45%; unicode-bidi: isolate; }
 .f-more { font-size: 10.5px; color: var(--muted); padding: 2px 8px; }
 
 .pass-row {
@@ -156,7 +158,7 @@ body {
   border-radius: 8px; margin-bottom: 6px; break-inside: avoid;
 }
 .pass-row .tick { color: var(--pass); font-weight: 700; }
-.pass-row .sub { color: var(--muted); font-size: 11px; margin-inline-start: auto; }
+.pass-row .sub { color: var(--muted); font-size: 11px; margin-inline-start: auto; unicode-bidi: isolate; }
 
 .rep-foot {
   margin-top: 26px; padding-top: 12px; border-top: 1px solid var(--line);

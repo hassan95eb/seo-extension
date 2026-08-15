@@ -69,7 +69,7 @@
       @keyframes slfade{from{opacity:0}to{opacity:1}}
       .tag{position:absolute;transform:translateY(-100%);font:600 11px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Tahoma,sans-serif;
            color:#fff;padding:2px 7px;border-radius:4px 4px 0 0;white-space:nowrap;max-width:340px;
-           overflow:hidden;text-overflow:ellipsis;pointer-events:none;}
+           overflow:hidden;text-overflow:ellipsis;pointer-events:none;unicode-bidi:isolate;}
       .pulse{animation:slpulse 1.2s ease 2;}
       @keyframes slpulse{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,0)}50%{box-shadow:0 0 0 8px rgba(239,68,68,.25)}}
     `;
@@ -166,16 +166,35 @@
   }
 
   /* ---------- audit ---------- */
+  function pushScore() {
+    if (!report) return;
+    try {
+      chrome.runtime.sendMessage({
+        type: "SEO_LENS_SCORE", errors: report.counts.errors, warnings: report.counts.warnings
+      });
+    } catch (e) { /* ignore */ }
+  }
+
   function runAudit() {
     try { report = window.__SEO_LENS_AUDIT__(); }
     catch (e) { console.error("SEO Lens:", e); report = null; }
-    if (report) {
-      try {
-        chrome.runtime.sendMessage({
-          type: "SEO_LENS_SCORE", errors: report.counts.errors, warnings: report.counts.warnings
-        });
-      } catch (e) { /* ignore */ }
-    }
+    pushScore();
+  }
+
+  // The header checks need a network round-trip, so they run after the panel has already
+  // painted the synchronous findings. `token` guards against a re-scan landing out of order.
+  let auditToken = 0;
+  function runHeaderAudit() {
+    if (!report || !window.__SEO_LENS_AUDIT_HEADERS__) return;
+    const token = ++auditToken;
+    const target = report;
+    window.__SEO_LENS_AUDIT_HEADERS__(report)
+      .then(() => {
+        if (token !== auditToken || report !== target) return;
+        pushScore();
+        renderAll();
+      })
+      .catch((e) => console.debug("SEO Lens headers:", e));
   }
 
   /* ---------- report export ---------- */
@@ -330,7 +349,7 @@
 
     shadow.querySelector("#sl-close").addEventListener("click", closePanel);
     shadow.querySelector("#sl-rescan").addEventListener("click", () => {
-      clearHighlights(); highlightAllOn = false; runAudit(); renderAll();
+      clearHighlights(); highlightAllOn = false; runAudit(); renderAll(); runHeaderAudit();
     });
     shadow.querySelector("#sl-lang").addEventListener("click", () => {
       lang = lang === "fa" ? "en" : "fa";
@@ -396,12 +415,16 @@
       const m = SEV_META[i.severity];
       const msg = tIssue(i);
       const canHl = i.count && i.highlightable;
+      // p.text is text lifted off the audited page: it can be RTL, LTR or mixed, and it
+      // must never reorder against the panel's own direction. bdi + dir="auto" gives it
+      // its own embedding level regardless of which language the UI is in.
       const targets = (i.paths || []).slice(0, 6).map(
-        (p) => `<li><span class="sl-path">${esc(p.path)}</span>${p.text ? `<span class="sl-snip">${esc(p.text)}</span>` : ""}</li>`
+        (p) => `<li><span class="sl-path"><bdi>${esc(p.path)}</bdi></span>` +
+               `${p.text ? `<span class="sl-snip"><bdi dir="auto">${esc(p.text)}</bdi></span>` : ""}</li>`
       ).join("");
       const detail = msg.d
-        ? esc(msg.d) + (i.detailRaw ? ` — <bdi>${esc(i.detailRaw)}</bdi>` : "")
-        : (i.detailRaw ? `<bdi>${esc(i.detailRaw)}</bdi>` : "");
+        ? esc(msg.d) + (i.detailRaw ? ` — <bdi dir="auto">${esc(i.detailRaw)}</bdi>` : "")
+        : (i.detailRaw ? `<bdi dir="auto">${esc(i.detailRaw)}</bdi>` : "");
       return `
       <div class="sl-item ${i.severity} ${activeIssueId === i.id ? "active" : ""}" data-id="${i.id}">
         <div class="sl-row">
@@ -459,6 +482,7 @@
       host.style.display = "";
       runAudit();
       renderAll();
+      runHeaderAudit();
       panelOpen = true;
     });
   }
@@ -545,8 +569,9 @@
   .sl-targets li{font-size:10.5px;padding:4px 6px;background:#0f1a2e;border-radius:5px;margin-bottom:3px;
     display:flex;flex-direction:column;gap:2px;}
   .sl-path{color:#7dd3fc;font-family:ui-monospace,Menlo,Consolas,monospace;direction:ltr;text-align:left;
-    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .sl-snip{color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;unicode-bidi:isolate;}
+  .sl-snip{color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;unicode-bidi:isolate;}
+  .sl-title,.sl-desc,.sl-fix{unicode-bidi:isolate;}
   .sl-hl{background:#7c3aed;border:none;color:#fff;padding:6px 12px;border-radius:7px;cursor:pointer;
     font-size:11.5px;font-family:inherit;font-weight:600;}
   .sl-hl:hover{background:#6d28d9;}

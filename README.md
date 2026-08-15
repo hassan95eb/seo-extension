@@ -8,6 +8,8 @@ A Chrome extension that audits any page for 40+ SEO issues, **outlines the exact
 
 Most SEO extensions hand you a list. This one shows you *where* — click an issue and the page scrolls to the offending element and draws a labelled box around it.
 
+It is also the only one that reads the page's `dir` attribute, measures titles in rendered pixels rather than characters, and checks whether Google has retired the rich result your schema is asking for. Those claims were checked against the source of the ten leading extensions in August 2026, not against their marketing.
+
 > 🇮🇷 [نسخه فارسی این راهنما](README.fa.md)
 
 ![Audit panel with on-page highlighting](docs/panel-en.png)
@@ -104,20 +106,24 @@ goes with it.
 
 | Group | Checks |
 |---|---|
-| **Core tags** | title and meta description — presence, length, duplicates |
-| **Content structure** | missing / multiple / hidden / empty H1, heading level skips, empty headings, word count |
+| **Core tags** | title and meta description — presence, duplicates, and **rendered pixel width** against Google's ~580px / ~920px budgets, reported alongside the character count |
+| **Content structure** | missing / multiple / hidden / empty H1, heading level skips, empty headings, word count, **unisolated bidirectional text** in headings and links |
 | **Images** | missing alt, empty alt on content images, overly long alt, generic filenames |
 | **Performance** | missing width/height (CLS), images served larger than displayed, missing lazy-load, render-blocking scripts |
 | **Links** | empty anchor text, generic anchors, `href="#"`, `<a>` without href, `target="_blank"` without `noopener`, nofollowed internal links, no internal links, link counts |
-| **Indexability** | canonical (missing / duplicate / empty / pointing elsewhere), noindex, page-level nofollow, `lang`, non-self-referencing hreflang |
+| **Indexability** | canonical (missing / duplicate / empty / pointing elsewhere), noindex, page-level nofollow, `lang`, **`dir`** (missing, on `<body>`, or contradicting `lang`), non-self-referencing hreflang, **`X-Robots-Tag` response header** (`noindex`, `nofollow`, `nosnippet`, `max-snippet:0`, expired `unavailable_after`), **`Link: rel="canonical"` header conflicts** |
 | **Social** | Open Graph completeness, `twitter:card` |
-| **Structured data** | JSON-LD / microdata presence, malformed JSON, detected schema types |
+| **Structured data** | JSON-LD / microdata presence, malformed JSON, detected schema types, **rich-result types Google has retired** (with the retirement date), **schema values that do not appear on the page** |
 | **Technical** | viewport, disabled zoom, charset, favicon, HTTPS, mixed content, URL shape |
 | **Accessibility** | iframes without a title, form fields without labels |
 
 ## Scoring
 
 Starts at 100: −9 per error, −4 per warning, −1 per notice.
+
+The `X-Robots-Tag` checks need a network round-trip, so they arrive a moment after the panel
+opens and the score updates when they land. Everything else is computed synchronously and the
+panel never waits.
 
 Purely descriptive measurements — currently the internal/external link counts — carry the
 separate **Stats** severity. They are shown in the panel and the report but cost no points, so
@@ -146,6 +152,7 @@ content.js             panel, highlight system, exports
 report.html/.css/.js   print-ready report page
 fonts/                 Vazirmatn (Regular + Bold) for the PDF output
 _locales/              store name and description (en + fa)
+test/                  Playwright verification harness (see test/README.md)
 ```
 
 Adding a third language means adding one key to `i18n.js` — nothing else changes.
@@ -155,6 +162,83 @@ Adding a third language means adding one key to `i18n.js` — nothing else chang
 - Chrome blocks extensions on its own internal pages (`chrome://`, the Web Store), so the panel won't open there.
 - For `file://` pages, enable "Allow access to file URLs" in the extension's settings.
 - Everything runs client-side. No data is sent anywhere.
+
+## v2.2 — Persian-aware, header-aware, and current
+
+Three things nobody else in the category does. Each is verifiable in a minute.
+
+### 1. Titles are measured the way Google truncates them
+
+Google cuts SERP titles by **rendered pixel width**, not character count. Every other extension
+— and SEO Lens before v2.2 — used `String.length`.
+
+This matters for every language and slightly more for Persian, though not for the reason you
+might expect. Measured rather than assumed: a Persian character is about **7% narrower** than an
+English one at the same size, and ZWNJ inflation in a typical Persian title is only 1–3
+characters. The real effect is **variance** — take five titles of exactly 50 characters and the
+English widths spread about 8.8% around the mean while the Persian ones spread **14.6%**,
+because cursive joining changes width dramatically (`ببب` renders about 45% narrower than three
+isolated `ب`). Character count is a noisy proxy, and roughly 1.6× noisier in Persian.
+
+So the panel now reports both: `Title length is good (55 characters / 500px)`. ZWNJ is excluded
+from the character count, because it is a joining control and not a letter.
+
+**Check it:** open a page with a long Persian title. If it fits 580px it passes even past 60
+characters; if it overflows you get the pixel figure and the budget.
+
+### 2. `dir` is treated as a defect
+
+Missing or contradictory text direction is one of the most common real defects on Persian,
+Arabic, Hebrew and Urdu sites, and **no extension in the category reads the attribute at all**.
+
+- `lang="fa"` with `dir="ltr"` → error
+- `dir` on `<body>` instead of `<html>` → warning
+- `dir` missing entirely on a page whose own text is right-to-left → warning
+- declared correctly → passes
+
+Latin brand names and version numbers inside RTL headings and link labels are also outlined on
+the page: without isolation, `iPhone 15 Pro` renders as `Pro 15 iPhone`. Elements already using
+`<bdi>`, `dir` or `unicode-bidi: isolate` are left alone.
+
+The same discipline is applied inwards. Every value SEO Lens lifts off the audited page is now
+isolated before it is displayed — in the panel, in the PDF, and in the plain-text clipboard
+export.
+
+**Check it:** run the panel on any Persian site that sets `dir` on `body`.
+
+### 3. `noindex` delivered by an HTTP header
+
+`X-Robots-Tag: noindex` appears nowhere in the HTML. A DOM-based auditor reports the page as
+perfectly healthy while it stays out of the index — which is exactly how pages get silently
+deindexed for months.
+
+One same-origin request (HEAD, falling back to GET) reads the response headers and catches it,
+along with `nofollow`, `nosnippet` and `max-snippet:0` — which per Google's own robots-meta
+documentation also stop the content being used for AI Overviews and AI Mode — an
+`unavailable_after` date already in the past, and a `Link: rel="canonical"` header that
+contradicts the one in `<head>`.
+
+**Check it:** `curl -I` any page and compare what the header says against what other extensions
+report.
+
+### 4. Rich results Google has retired
+
+Validators check schema.org conformance, not Google feature eligibility, so a retired type
+validates cleanly for ever while producing nothing. `FAQPage` stopped appearing on **7 May
+2026**; `HowTo` went in 2023. Both are still emitted by huge numbers of WordPress installs.
+
+SEO Lens names the type and the date it died. It also checks the highest-value schema test
+nobody runs: whether the `price` and `ratingValue` in your JSON-LD actually appear on the page.
+Persian and Arabic-Indic digits are normalised first, so `۱٬۲۹۹٬۰۰۰` on the page matches
+`1299000` in the markup.
+
+**Check it:** any WordPress site with a Yoast or RankMath FAQ block.
+
+### Verified, not asserted
+
+`test/` holds a Playwright harness that serves local HTTPS fixtures and asserts on what the
+engine emits — including that a page with nothing wrong still scores exactly 100, and that a
+correctly built RTL page produces no direction findings at all. `npm test` in that folder.
 
 ## v2.1 — what changed and how to check it
 
