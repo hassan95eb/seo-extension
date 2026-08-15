@@ -11,8 +11,8 @@ function isInjectable(url) {
   if (!url) return false;
   try {
     const u = new URL(url);
-    if (BAD_SCHEMES.some((s) => u.protocol === s)) return false;
-    if (u.hostname === "chromewebstore.google.com") return false;
+    if (BAD_SCHEMES.some((s) => u.protocol.startsWith(s.replace(":", "")) && u.protocol === s)) return false;
+    if (u.hostname === "chromewebstore.google.com" || u.hostname === "chrome.google.com" && u.pathname.startsWith("/webstore")) return false;
     return u.protocol === "http:" || u.protocol === "https:" || u.protocol === "file:";
   } catch (e) {
     return false;
@@ -27,7 +27,7 @@ async function ensureInjected(tabId) {
     try {
       await chrome.scripting.executeScript({
         target: { tabId },
-        files: ["audit.js", "content.js"]
+        files: ["i18n.js", "audit.js", "content.js"]
       });
       return true;
     } catch (err) {
@@ -53,8 +53,13 @@ chrome.action.onClicked.addListener(async (tab) => {
   }
 });
 
-// Issue-count badge on the toolbar icon
+// Issue-count badge on the toolbar icon + opening the report page
 chrome.runtime.onMessage.addListener((msg, sender) => {
+  if (msg && msg.type === "SEO_LENS_OPEN_REPORT") {
+    const url = chrome.runtime.getURL("report.html") + "?k=" + encodeURIComponent(msg.key || "seoLensReport");
+    chrome.tabs.create({ url, index: sender.tab ? sender.tab.index + 1 : undefined });
+    return;
+  }
   if (msg && msg.type === "SEO_LENS_SCORE" && sender.tab && sender.tab.id) {
     const errors = msg.errors || 0;
     const warnings = msg.warnings || 0;

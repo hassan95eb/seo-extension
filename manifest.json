@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
-  "name": "SEO Lens — تحلیلگر سئو با هایلایت",
-  "version": "1.0.0",
-  "description": "مشکلات سئوی هر صفحه را پیدا می‌کند و اون بخشی که مشکل دارد را روی صفحه هایلایت می‌کند.",
+  "name": "__MSG_extName__",
+  "version": "2.0.0",
+  "description": "__MSG_extDesc__",
   "homepage_url": "https://github.com/hassan95eb/seo-extension",
-  "default_locale": "fa",
+  "default_locale": "en",
   "permissions": [
     "activeTab",
     "scripting",
@@ -17,7 +17,7 @@
     "service_worker": "background.js"
   },
   "action": {
-    "default_title": "SEO Lens — تحلیل این صفحه",
+    "default_title": "__MSG_actionTitle__",
     "default_icon": {
       "16": "icons/icon16.png",
       "32": "icons/icon32.png",
@@ -37,11 +37,26 @@
         "<all_urls>"
       ],
       "js": [
+        "i18n.js",
         "audit.js",
         "content.js"
       ],
       "run_at": "document_idle",
       "all_frames": false
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "report.html",
+        "report.css",
+        "report.js",
+        "i18n.js",
+        "fonts/*"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
     }
   ]
 }

@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>SEO Lens Report</title>
+<link rel="stylesheet" href="report.css">
+</head>
+<body>
+  <div class="toolbar no-print" id="toolbar">
+    <button id="btn-print" class="tb-primary"></button>
+    <label class="tb-file" id="lbl-logo">
+      <span id="lbl-logo-text"></span>
+      <input type="file" id="file-logo" accept="image/*" hidden>
+    </label>
+    <button id="btn-logo-clear"></button>
+    <button id="btn-lang">فا / EN</button>
+    <span class="tb-hint" id="tb-hint"></span>
+  </div>
+
+  <div class="sheet" id="sheet">
+    <header class="rep-head">
+      <div class="rh-left">
+        <img id="brand-logo" class="brand-logo" alt="">
+        <div class="rh-titles">
+          <h1 id="site-name"></h1>
+          <div class="rh-url" id="site-url"></div>
+        </div>
+      </div>
+      <div class="rh-right">
+        <div class="rep-kicker" id="rep-kicker"></div>
+        <div class="rep-date" id="rep-date"></div>
+      </div>
+    </header>
+
+    <section class="hero">
+      <div class="gauge" id="gauge">
+        <div class="gauge-in">
+          <div class="gauge-score" id="score"></div>
+          <div class="gauge-of" id="score-of"></div>
+        </div>
+      </div>
+      <div class="stats">
+        <div class="stat st-e"><div class="stat-n" id="c-err"></div><div class="stat-l" id="l-err"></div></div>
+        <div class="stat st-w"><div class="stat-n" id="c-warn"></div><div class="stat-l" id="l-warn"></div></div>
+        <div class="stat st-i"><div class="stat-n" id="c-info"></div><div class="stat-l" id="l-info"></div></div>
+        <div class="stat st-p"><div class="stat-n" id="c-pass"></div><div class="stat-l" id="l-pass"></div></div>
+      </div>
+    </section>
+
+    <section class="meta-grid">
+      <div><span class="mg-k" id="k-title"></span><span class="mg-v" id="v-title"></span></div>
+      <div><span class="mg-k" id="k-url"></span><span class="mg-v mono" id="v-url"></span></div>
+    </section>
+
+    <h2 class="sec-title" id="sec-details"></h2>
+    <div id="findings"></div>
+
+    <h2 class="sec-title" id="sec-good"></h2>
+    <div id="passes"></div>
+
+    <footer class="rep-foot">
+      <div class="foot-line">
+        <span id="foot-text"></span>
+        <span class="foot-dot">•</span>
+        <span id="foot-url"></span>
+      </div>
+      <div class="foot-sign">
+        <span class="sign-mark">hassan mode : on</span>
+        <span class="foot-dot">•</span>
+        <a class="sign-link" href="https://github.com/hassan95eb/seo-extension">github.com/hassan95eb</a>
+      </div>
+    </footer>
+  </div>
+
+<script src="i18n.js"></script>
+<script src="report.js"></script>
+</body>
+</html>
