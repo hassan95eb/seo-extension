@@ -94,7 +94,7 @@
 
     $("sec-details").textContent = t("rDetails");
     $("findings").innerHTML = findings.length
-      ? findings.map(renderFinding).join("")
+      ? findings.map((f, idx) => renderFinding(f, idx)).join("")
       : `<p class="f-desc">${esc(t("rNoIssues"))}</p>`;
 
     $("sec-good").textContent = passes.length ? t("rGoodJob") : "";
@@ -107,12 +107,21 @@
 
     $("foot-text").textContent = t("rFooter");
     $("foot-url").textContent = data.url || "";
+
+    bindMoreButtons();
   }
 
-  function renderFinding(i) {
+  // How many element rows are printed before the "show more" toggle appears.
+  const PATHS_PREVIEW = 10;
+
+  const elRow = (p) =>
+    `<li><span class="p"><bdi>${esc(p.path)}</bdi></span><span class="s"><bdi dir="auto">${esc(p.text || "")}</bdi></span></li>`;
+
+  function renderFinding(i, idx) {
     const m = I18N.issue(lang, i.code, i.params);
-    const els = (i.paths || []).slice(0, 8);
-    const more = (i.count || 0) - els.length;
+    const all = i.paths || [];
+    const first = all.slice(0, PATHS_PREVIEW);
+    const rest = all.slice(PATHS_PREVIEW);
     const detail = m.d
       ? esc(m.d) + (i.detailRaw ? ` — <bdi dir="auto">${esc(i.detailRaw)}</bdi>` : "")
       : (i.detailRaw ? `<bdi dir="auto">${esc(i.detailRaw)}</bdi>` : "");
@@ -125,10 +134,26 @@
       </div>
       ${detail ? `<p class="f-desc">${detail}</p>` : ""}
       ${m.f ? `<p class="f-fix"><b>${esc(t("rFix"))}:</b> ${esc(m.f)}</p>` : ""}
-      ${els.length ? `<ul class="f-els">${els.map((p) =>
-        `<li><span class="p"><bdi>${esc(p.path)}</bdi></span><span class="s"><bdi dir="auto">${esc(p.text || "")}</bdi></span></li>`
-      ).join("")}${more > 0 ? `<li class="f-more">+ ${more}</li>` : ""}</ul>` : ""}
+      ${first.length ? `<ul class="f-els">${first.map(elRow).join("")}</ul>` : ""}
+      ${rest.length ? `<ul class="f-els f-els-rest" id="rest-${idx}" hidden>${rest.map(elRow).join("")}</ul>
+        <button class="f-more-btn no-print" data-target="rest-${idx}"
+                data-more="${esc(t("moreItems", { n: rest.length }))}"
+                data-less="${esc(t("lessItems"))}">${esc(t("moreItems", { n: rest.length }))}</button>` : ""}
     </div>`;
+  }
+
+  // Collapsed lists are inert markup until this runs; print styles reveal them anyway,
+  // so an un-expanded report still exports complete.
+  function bindMoreButtons() {
+    document.querySelectorAll(".f-more-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const list = document.getElementById(btn.dataset.target);
+        if (!list) return;
+        const opening = list.hasAttribute("hidden");
+        if (opening) list.removeAttribute("hidden"); else list.setAttribute("hidden", "");
+        btn.textContent = opening ? btn.dataset.less : btn.dataset.more;
+      });
+    });
   }
 
   /* ---------- events ---------- */

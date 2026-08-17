@@ -150,7 +150,13 @@ body {
 }
 .f-els .p { font-family: ui-monospace, Menlo, Consolas, monospace; color: #0369a1; direction: ltr; unicode-bidi: isolate; }
 .f-els .s { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 45%; unicode-bidi: isolate; }
-.f-more { font-size: 10.5px; color: var(--muted); padding: 2px 8px; }
+.f-els-rest { margin-top: 3px; }
+.f-more-btn {
+  display: block; width: 100%; margin: 4px 0 0; padding: 6px 10px;
+  background: #fff; border: 1px dashed #cbd5e1; border-radius: 8px;
+  color: #2563eb; font-size: 11.5px; font-family: inherit; cursor: pointer;
+}
+.f-more-btn:hover { background: #f8fafc; border-color: #94a3b8; }
 
 .pass-row {
   display: flex; align-items: center; gap: 9px; font-size: 12px;
@@ -186,4 +192,6 @@ body {
   }
   .rep-head { break-after: avoid; }
   .sec-title { break-after: avoid; page-break-after: avoid; }
+  /* A printed report must be complete regardless of what was expanded on screen. */
+  .f-els-rest[hidden] { display: block !important; }
 }

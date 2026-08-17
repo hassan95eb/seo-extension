@@ -13,6 +13,10 @@
   // with nothing wrong can actually reach 100/100.
   const SEV = { ERROR: "error", WARN: "warning", INFO: "info", PASS: "pass", STAT: "stat" };
 
+  // Upper bound on element references kept per finding. High enough that real pages
+  // are never truncated, low enough to bound memory on pathological documents.
+  const PATHS_CAP = 300;
+
   const GENERIC_ANCHORS = [
     "click here", "here", "read more", "more", "link", "this", "learn more", "see more",
     "اینجا", "کلیک کنید", "اینجا کلیک کنید", "بیشتر", "ادامه مطلب", "لینک",
@@ -623,7 +627,7 @@
     issues.sort((a, b) => order[a.severity] - order[b.severity]);
     issues.forEach((i) => {
       i.els = (i.els || []).filter((e) => e && e.nodeType === 1);
-      i.paths = i.els.slice(0, 12).map((e) => ({ path: cssPath(e), text: snippet(e) }));
+      i.paths = i.els.slice(0, PATHS_CAP).map((e) => ({ path: cssPath(e), text: snippet(e) }));
       i.count = i.els.length;
       i.highlightable = i.els.some((e) => !["TITLE", "META", "LINK", "SCRIPT", "HEAD"].includes(e.tagName));
     });

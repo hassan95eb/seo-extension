@@ -24,6 +24,9 @@
   let activeIssueId = null, highlightAllOn = false, filter = "all";
   let lang = "fa";
 
+  // How many element rows are shown before the "show more" toggle appears.
+  const PATHS_PREVIEW = 10;
+
   const SIGN = "hassan mode : on";
   const SIGN_URL = "https://github.com/hassan95eb/seo-extension";
 
@@ -263,7 +266,7 @@
       lines.push(`[${t(SEV_META[i.severity].uiKey)}] ${m.t}`);
       if (m.d || i.detailRaw) lines.push(`   ${[m.d, i.detailRaw].filter(Boolean).join(" — ")}`);
       if (m.f) lines.push(`   ${t("fixLabel")} ${m.f}`);
-      (i.paths || []).slice(0, 5).forEach((p) => lines.push(`   ↳ ${p.path}`));
+      (i.paths || []).forEach((p) => lines.push(`   ↳ ${p.path}`));
       lines.push("");
     });
     lines.push(`— ${SIGN} · github.com/hassan95eb/seo-extension`);
@@ -418,10 +421,21 @@
       // p.text is text lifted off the audited page: it can be RTL, LTR or mixed, and it
       // must never reorder against the panel's own direction. bdi + dir="auto" gives it
       // its own embedding level regardless of which language the UI is in.
-      const targets = (i.paths || []).slice(0, 6).map(
-        (p) => `<li><span class="sl-path"><bdi>${esc(p.path)}</bdi></span>` +
-               `${p.text ? `<span class="sl-snip"><bdi dir="auto">${esc(p.text)}</bdi></span>` : ""}</li>`
-      ).join("");
+      const allPaths = i.paths || [];
+      const pathRow = (p) =>
+        `<li><span class="sl-path"><bdi>${esc(p.path)}</bdi></span>` +
+        `${p.text ? `<span class="sl-snip"><bdi dir="auto">${esc(p.text)}</bdi></span>` : ""}</li>`;
+      const shown = allPaths.slice(0, PATHS_PREVIEW).map(pathRow).join("");
+      const restRows = allPaths.slice(PATHS_PREVIEW).map(pathRow).join("");
+      const restCount = allPaths.length - PATHS_PREVIEW;
+      const targets = shown
+        ? `<ul class="sl-targets">${shown}</ul>` +
+          (restRows
+            ? `<ul class="sl-targets sl-rest" hidden>${restRows}</ul>` +
+              `<button class="sl-more" data-more="${esc(t("moreItems", { n: restCount }))}" ` +
+              `data-less="${esc(t("lessItems"))}">${esc(t("moreItems", { n: restCount }))}</button>`
+            : "")
+        : "";
       const detail = msg.d
         ? esc(msg.d) + (i.detailRaw ? ` — <bdi dir="auto">${esc(i.detailRaw)}</bdi>` : "")
         : (i.detailRaw ? `<bdi dir="auto">${esc(i.detailRaw)}</bdi>` : "");
@@ -438,7 +452,7 @@
         <div class="sl-detail">
           ${detail ? `<p class="sl-desc">${detail}</p>` : ""}
           ${msg.f ? `<p class="sl-fix"><b>${esc(t("fixLabel"))}</b> ${esc(msg.f)}</p>` : ""}
-          ${targets ? `<ul class="sl-targets">${targets}</ul>` : ""}
+          ${targets}
           ${canHl
             ? `<button class="sl-hl">${esc(t("showOnPage"))}</button>`
             : (i.count
@@ -457,6 +471,16 @@
           body.querySelectorAll(".sl-item").forEach((n) => n.classList.toggle("active", n === node && ok));
         }
       });
+      const moreBtn = node.querySelector(".sl-more");
+      if (moreBtn) {
+        moreBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          const rest = node.querySelector(".sl-rest");
+          const opening = rest.hasAttribute("hidden");
+          if (opening) rest.removeAttribute("hidden"); else rest.setAttribute("hidden", "");
+          moreBtn.textContent = opening ? moreBtn.dataset.less : moreBtn.dataset.more;
+        });
+      }
       const btn = node.querySelector(".sl-hl");
       if (btn) {
         btn.addEventListener("click", (e) => {
@@ -565,7 +589,11 @@
   .sl-fix{margin:0 0 8px;font-size:11.5px;color:#a5b4fc;line-height:1.9;background:#1a2340;
     padding:7px 9px;border-radius:7px;border-inline-start:3px solid #6366f1;}
   .sl-fix b{color:#c7d2fe;}
-  .sl-targets{margin:0 0 8px;padding:0;list-style:none;max-height:150px;overflow:auto;}
+  .sl-targets{margin:0 0 6px;padding:0;list-style:none;}
+  .sl-targets.sl-rest{margin-top:-2px;}
+  .sl-more{background:transparent;border:1px dashed #3b4a63;color:#93c5fd;padding:5px 10px;border-radius:7px;
+    cursor:pointer;font-size:11px;font-family:inherit;margin:0 0 8px;display:block;width:100%;}
+  .sl-more:hover{background:#182541;color:#bfdbfe;border-color:#4b5b76;}
   .sl-targets li{font-size:10.5px;padding:4px 6px;background:#0f1a2e;border-radius:5px;margin-bottom:3px;
     display:flex;flex-direction:column;gap:2px;}
   .sl-path{color:#7dd3fc;font-family:ui-monospace,Menlo,Consolas,monospace;direction:ltr;text-align:left;
