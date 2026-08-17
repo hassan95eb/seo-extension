@@ -1,5 +1,26 @@
 # Changelog
 
+## v2.2.1
+
+### Element lists are no longer truncated
+
+The list of offending elements was being cut at three independent points: the engine kept
+only the first 12 references per finding, the panel rendered 6 of those and the report 8,
+collapsing whatever was left into a bare `+15` with no way to reach it. A finding covering
+23 images therefore exposed a third of them, and the two upper layers could not have shown
+more even if they wanted to — the data had already been thrown away in `finalize()`.
+
+- The engine now keeps every matched element, bounded at `PATHS_CAP = 300` so a pathological
+  document cannot blow up memory.
+- Panel and report render the first 10 rows and add a **Show N more / Show less** toggle for
+  the remainder. Nothing is hidden without a way to reveal it.
+- Print styles force every collapsed list open and hide the toggle itself, so an exported PDF
+  is complete regardless of what happened to be expanded on screen. A client-facing report
+  that silently dropped rows would be worse than no report.
+- The plain-text clipboard export lists every element instead of the first five.
+- Dropped the fixed-height inner scrollbar on the panel's element list; it now flows into the
+  panel's own scroll, which reads better once a list can be long.
+
 ## v2.2.0
 
 Three checks from `docs/gap-analysis.md`, in the order that document recommended. Each one
