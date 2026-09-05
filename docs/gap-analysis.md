@@ -47,7 +47,13 @@ Ordered by what I would build first.
 
 > **Status, updated with v2.2.0:** items **1**, **3** and **4** are shipped. Item 2a
 > (`nosnippet` / `max-snippet`) came along with item 3, since both read the same response.
-> Items 2b, 2c, 5, 6 and 7 are still open. The per-item headings below carry their own status.
+> Items 2b, 2c, 5, 6, 7 and 8 are still open. The per-item headings below carry their own status.
+
+> **Added 5 September 2026:** item **8**, image weight and LCP. It is not from the August
+> competitor sweep — it comes out of the same question item 6 raises (`LargestContentfulPaint`
+> exposes the offending element, and this extension already outlines elements) and it takes
+> the LCP half of item 6 with it. Item 6 is narrowed to INP and CLS accordingly. The decisions
+> recorded under 8 are settled, not options.
 
 ---
 
@@ -186,7 +192,7 @@ You already store everything needed for this. It is mostly formatting.
 
 ---
 
-## 6. Core Web Vitals, measured honestly — ○ open
+## 6. Core Web Vitals, measured honestly — ○ open, narrowed to INP and CLS
 
 SEO Pro and Ahrefs Toolbar show CWV; most others do not. The metrics are still LCP, INP, CLS — nothing new since INP replaced FID in 2024, so anyone advertising a fourth Core Web Vital is wrong.
 
@@ -195,6 +201,14 @@ What makes this interesting for you specifically is that **LCP and CLS expose th
 Two honesty requirements: INP only exists if the user actually interacts, and a single visit is not field data — Google ranks on CrUX 75th percentile from real users. Say so in the UI; it prevents the "why does your number differ from PageSpeed" support load that competitors suffer.
 
 **Effort:** medium. **Differentiation:** medium overall, high on the visual attribution.
+
+**Overlap with item 8 — resolved in favour of 8.** LCP element identification appears in both,
+and shipping the same `PerformanceObserver` twice would be silly. It belongs to 8, where it is
+the entry point to a fix rather than a number on a dial: knowing the LCP element is only
+interesting if the next click does something about it. **What is left here is INP and CLS.**
+CLS keeps its own attribution work (`LayoutShiftAttribution.node`), which is genuinely separate
+— a layout shift is usually not an image problem. Item 8 does not block item 6 and item 6 does
+not block item 8; they share one helper and nothing else.
 
 ---
 
@@ -210,6 +224,250 @@ The bridge that makes this credible rather than folklore: **Google's own Lightho
 
 ---
 
+## 8. Image weight and LCP — measure the saving instead of estimating it — ○ open
+
+Every performance tool in and around this category reports **estimated** savings and stops
+there. Lighthouse says "properly size images — potential savings 412 KB" and hands the number
+to a developer who then has to go and find out whether that is true. **Nobody closes the
+loop.** The decision here is to close it: re-encode the flagged image in the browser, report
+the bytes that actually came out, and hand the user the file.
+
+That is a small feature with an unusually clean story, because it is the same move SEO Lens
+already makes everywhere else — do not describe the defect, point at it — applied to bytes.
+
+### 8a. Scope, and the thing this deliberately is not
+
+**Scope: image weight and LCP.** Not page speed.
+
+**Explicit non-goal: any overall "site speed score" or synthetic performance number.**
+Lighthouse ships *inside* Chrome DevTools, is free, is run by the same team that defines the
+metrics, and is two keystrokes away from every user of this extension. A second, worse number
+sitting next to it in a panel invites exactly one question — "why does yours disagree with
+Lighthouse?" — and every answer to that question costs credibility. This is recorded as a
+non-goal rather than a "later" so it does not get reintroduced as a nice-to-have; if a future
+version wants a speed number, the argument has to be made against this paragraph first.
+
+The claim is narrow on purpose: *these specific images are heavier than they need to be, this
+one is your LCP, and here is the smaller file.* Lighthouse does not hand back a file.
+
+### 8b. Half of the detection already exists — read `audit.js` before adding anything
+
+The image loop at `audit.js` (the `/* ---------- Images ---------- */` block, roughly lines
+240–271) already walks every `doc.images` entry and already emits three of the six checks
+proposed for this category. Adding them again would produce duplicate rows:
+
+| Proposed check | State in the engine today |
+|---|---|
+| Overscale — `naturalWidth` vs rendered width | **Exists** as `IMG_OVERSIZED`, at `naturalWidth > width * 2`, no `devicePixelRatio` term |
+| Missing `width`/`height` (CLS contributor) | **Exists** as `IMG_NO_DIM`, `warning`, `cat: "perf"` |
+| `loading="lazy"` above the fold | **Inverse exists** as `IMG_NO_LAZY` (below-fold images *without* lazy). The `aboveFold()` helper is already there |
+| LCP image identification | New |
+| Missing modern format / no `srcset` | New |
+| Missing `fetchpriority="high"` on the LCP image | New |
+
+So the honest description of this item is **three new checks, one correction, and a fix step**
+— not a new category built from nothing.
+
+**The correction:** `IMG_OVERSIZED` should become `naturalWidth > renderedWidth *
+devicePixelRatio * 1.5`. The current `* 2` with no DPR term is wrong in both directions — it
+accuses correctly-authored 2× assets on a Retina screen, and it lets a genuinely bloated image
+through on a DPR-1 screen. Note that this changes scores on pages that already audit clean, so
+it is a CHANGELOG-visible behaviour change, and its `detailRaw` (today
+`${naturalWidth}px → ${width}px`) needs the DPR in it or the finding reads as a false positive
+to anyone on a Retina display.
+
+### 8c. The six checks, in priority order
+
+1. **LCP image identification.** `PerformanceObserver` on `largest-contentful-paint` with
+   `buffered: true`, reported when `entry.element` is an `IMG`. This is the headline, not a
+   list row — see the open question in 8h about what "headline" can mean given how
+   `finalize()` orders findings.
+2. **Overscale.** As corrected in 8b.
+3. **Missing modern format** — not WebP or AVIF, and/or no `srcset`.
+4. **Missing `fetchpriority="high"`** on the LCP image.
+5. **Missing `width`/`height`.** Already shipped; listed for completeness only.
+6. **`loading="lazy"` on above-the-fold images.** An anti-pattern that actively makes LCP
+   worse, because the lazy image is skipped in the initial fetch queue. Most tools either
+   ignore it or, worse, recommend lazy-loading everything. Catching it is cheap — it is the
+   complement of the existing `noLazy` condition against the existing `aboveFold()` — and it
+   is the check that shows the tool knows what it is talking about.
+
+### 8d. The fix step, which is the actual differentiator
+
+Each flagged image gets an **Optimize** action: re-encode at the rendered width the audit
+already measured, show measured before/after bytes, offer the optimized file for download.
+
+Fixed decisions:
+
+- **100% client-side. No server, no backend, no upload.** The image never leaves the machine.
+  This is not only a privacy position, it is the *only* position consistent with the "nothing
+  leaves your browser" claim this document already recommends making, and a competitor with a
+  backend cannot copy it without giving that claim up.
+- **Encoder: the browser's own WebP encoder**, via
+  `OffscreenCanvas.convertToBlob({ type: 'image/webp', quality })`, default **quality 0.82**.
+  Zero bytes of dependency, already present in every Chromium build.
+- **No WASM codec bundle now.** `@jsquash/webp` is the option to reach for *later*, and only
+  if AVIF or true lossless turns out to matter; it costs several hundred KB of WASM in the
+  package for an encoder the browser already has a version of. Revisit on evidence, not on
+  principle.
+- **Known limitations of the native path, to be documented in the UI rather than discovered by
+  users:** it is lossy-only, there is no libwebp `method`/effort control, and it strips ICC and
+  EXIF. For a "here is a smaller version of your hero image" workflow that is acceptable; for a
+  photographer's colour-managed asset it is not, and the UI should say so.
+- **Cross-origin images are read through `fetch(url)` → `blob()` → `createImageBitmap(blob)` →
+  draw → encode**, never by pointing an `<img>` at the URL and drawing it. Drawing a
+  cross-origin image taints the canvas and `convertToBlob()` then throws — the failure is
+  silent-looking and would show up as "Optimize does nothing on half the web."
+- **Encoding runs off the main thread via `OffscreenCanvas`, on demand, one image per user
+  click. Never batch-encode every image on the page.** A 40-image gallery would lock the tab
+  and, worse, would break hard rule 6 — the panel must never alter or degrade the page it is
+  auditing. See 8h for where that worker can legally live.
+
+**A drag-and-drop entry point into the same engine is acceptable as a second door, and must
+not become the framing.** A generic drop-zone image converter competes head-on with Google's
+Squoosh — open source, WASM, offline, free, better codecs, made by the Chrome team — and
+loses that comparison on every axis. The defensible product is *"the auditor found this
+specific image on this specific page and fixed it"*; the drop zone is a convenience for the
+image the user already has in a folder, and it should be reachable but never on the front of
+the box.
+
+### 8e. Measurement risk — the one that can discredit the report
+
+`performance.getEntriesByType('resource')` is the cheap way to get real transferred bytes and
+it fails quietly in two very common cases:
+
+- `encodedBodySize` is **0** for cross-origin resources whose response lacks a
+  `Timing-Allow-Origin` header. Most CDN-hosted images.
+- `transferSize` is **0** on a cache hit. Most repeat visits, which is most audits.
+
+Both are normal, not exotic. The fallbacks are a background `fetch` for the real bytes — which
+costs permissions and traffic, see 8f — or a pixel-count-based estimate, which is an estimate
+and must be labelled as one.
+
+**Hard requirement: when the size is unknown, the UI shows "unknown". Never "0 KB".** A single
+confident zero next to a visibly large photograph tells the user the whole report is guessing,
+and they are right to conclude that. Under hard rule 1 this is two message codes in `i18n.js`,
+not a string assembled in the engine — the same split as the existing `A_STATS` / `A_STATS_NF`
+pair.
+
+### 8f. Permissions — and the one place this collides with v2.1
+
+Reading real bytes for a **cross-origin** image needs host permissions. The decision is
+`optional_host_permissions`, requested only on an explicit user action (the Optimize click),
+never at install.
+
+**This needs flagging honestly, because it touches the v2.1 hardening.** `manifest.json` today
+declares exactly `activeTab`, `scripting`, `storage` — no `host_permissions` — and hard rule 2
+in `CLAUDE.md` states the extension has none. `optional_host_permissions` does not produce an
+install-time warning and grants nothing until the user says yes, so the *install* story is
+unchanged; but the manifest would no longer be literally free of host permissions, and both
+`README.md` and the Recommendation section of this document lean on that. See the open
+questions in 8h. **The phasing in 8g is built so that this decision can be deferred rather than
+made under pressure:** P0 and P1 need no permission change at all.
+
+### 8g. Architecture fit, and phasing
+
+Where it lands in the existing split:
+
+| Piece | File | New or reused |
+|---|---|---|
+| DOM checks (overscale, format, `srcset`, `fetchpriority`, lazy-above-fold) | `audit.js`, inside the existing image loop | Reused — `isVisible()`, `aboveFold()`, `cssPath()`, `snippet()` all already do the work |
+| LCP observation | `audit.js`, new async entry point alongside `__SEO_LENS_AUDIT_HEADERS__` | New, same shape as the header pass |
+| Score / count / ordering recompute after the async finding lands | `finalize()` in `audit.js` | Reused, unchanged — this is exactly what it was split out for |
+| All wording, both languages | the `M` table in `i18n.js`, via `issue()` / `fill()` | Reused |
+| Panel rows, per-issue action button, highlight + scroll, highlight-all | `renderList()` / `highlightIssue()` / `highlightAll()` in `content.js` | Reused — the new **Optimize** button sits beside the existing `.sl-hl` button in the same detail block |
+| PDF report | `renderFinding()` in `report.js` | Reused, no change — it renders any code generically |
+| Encoding worker | new file | New, and its home is an open question (8h) |
+| Injection list | `ensureInjected()` in `background.js` currently injects exactly `i18n.js`, `audit.js`, `content.js` | Changes only if the encoder becomes a fourth injected file |
+
+**P0 — DOM-only. No bytes, no encoder, no manifest change.**
+LCP image identified and outlined on the page; `fetchpriority` missing on it; `loading="lazy"`
+above the fold; format and `srcset` gaps; the `IMG_OVERSIZED` DPR correction.
+
+*Why the cut line is here:* the highlight system is the product. "This is your LCP image, and
+it is lazy-loaded" is a **complete, actionable finding with no number attached** — the user
+sees the box drawn round the hero image and knows what to do. It ships without touching the
+permission model, without a worker, without a byte measurement that might read "unknown", and
+without any of the decisions in 8f. If P1 never happens, P0 is still the only extension in the
+category that outlines your LCP element.
+
+*Effort:* small. The image loop already iterates every image with visibility and fold
+information in hand; this is roughly a few dozen lines in `audit.js` plus six message codes ×
+two languages in `i18n.js`. *Risk:* low. The one real risk is the `IMG_OVERSIZED` threshold
+change moving scores on pages that previously audited clean — a CHANGELOG matter, not an
+engineering one.
+
+**P1 — measured weight and the Optimize action, same-origin images only.**
+Same-origin images need no host permission, and `encodedBodySize` is populated for them without
+a `Timing-Allow-Origin` header, so the whole measurement story works honestly inside the
+existing permission model. Adds the encoder, the before/after readout, and the download.
+
+*Effort:* medium. A new async pass, a new button and its state handling in `renderList()`, and
+the `serializeReport()` change described in 8h. *Risk:* medium, concentrated in where the worker
+is allowed to run — that is the question to answer before writing the encoder, not after.
+
+**P2 — cross-origin bytes, platform-specific advice, drag-and-drop door.**
+Gated on the `optional_host_permissions` decision in 8f. Platform detection belongs here
+because it is near-free once the rest exists: read `meta[name=generator]`, look for
+`wp-content` in image paths, look for `__NEXT_DATA__`, and turn "convert your images to WebP"
+— which is not a fix, it is a category — into "install *this* plugin", "use `next/image`", or,
+generically, "here is the optimized file, replace it". A recommendation a non-developer can
+act on without a second search is the difference between a report that gets implemented and
+one that gets forwarded.
+
+*Effort:* medium, plus the policy decision. *Risk:* the highest of the three, and most of it is
+positioning rather than code.
+
+### 8h. Open questions — where the code contradicts the plan
+
+These are places the existing architecture forces a different choice than the plan assumes.
+None are blocking; all want a decision before implementation.
+
+1. **"Headline finding" collides with `finalize()`.** `finalize()` sorts strictly by severity
+   (`error` → `warning` → `info` → `stat` → `pass`). Being the LCP image is a *measurement*,
+   not a defect, so under hard rule 5 it should be `stat` — which puts it near the bottom of
+   the list, not the top. Making it a `warning` to force it upward would cost a clean page its
+   100/100 for doing nothing wrong. The proposal is therefore: emit the LCP finding as `stat`
+   and give it its own slot in the panel header next to the score, rather than trying to win
+   the ordering. That is a panel-layout change, so it wants your agreement.
+2. **The worker cannot obviously live where the plan puts it.** A content script creating a
+   `Worker` from a `blob:` URL is subject to the **audited page's** CSP (`worker-src` /
+   `child-src`), so it will fail on exactly the well-configured sites most likely to be
+   audited. Loading it via `chrome.runtime.getURL()` instead requires adding
+   `web_accessible_resources` to `manifest.json`, a surface this extension currently does not
+   expose at all. The third option is to encode in the **service worker** (`background.js`):
+   `OffscreenCanvas` and `createImageBitmap` are both available there, no page CSP applies, and
+   it keeps the audited page untouched, which hard rule 6 wants anyway. **Recommendation:
+   encode in `background.js`, message-passing the blob.** Needs your call.
+3. **`serializeReport()` will silently drop the measured bytes.** It whitelists
+   `code, severity, cat, params, detailRaw, count, paths` — anything else on a finding never
+   reaches `report.js`. So before/after byte values must ride in `params` or `detailRaw`, or
+   they will not appear in the PDF. Related and worse: the PDF payload is snapshotted when the
+   report tab is opened, so an image optimized *after* that snapshot is not in the report.
+   Either the Optimize action re-serializes, or the UI has to say the report reflects the
+   audit and not the fixes.
+4. **Hard rule 3 wording.** "Nothing leaves the browser" stays true — no analysis is uploaded
+   and no image is transmitted anywhere — but P1/P2 do issue outbound requests for assets the
+   page already loaded. That is a real change in network behaviour and the claim should be
+   phrased as *nothing is uploaded, no account, no telemetry* rather than left to imply zero
+   requests. Worth fixing in `README.md` at the same time, before someone else points it out.
+5. **Rule 2 versus `optional_host_permissions`.** As set out in 8f — the *spirit* of the rule
+   survives, the *letter* does not. If the "no host permissions at all" line is worth more than
+   cross-origin byte accuracy, then P2 is simply not built and the cross-origin case shows
+   "unknown" forever, which is honest and costs very little. This is a positioning call, not a
+   technical one, and it is yours.
+6. **LCP after a late injection.** The panel injects on toolbar click, often long after load,
+   and `buffered: true` is what makes this work at all. It does mean the reported LCP belongs
+   to the initial navigation — on an SPA that has since changed route, or a page the user has
+   been scrolling for a minute, the entry may describe an element that is no longer the visual
+   hero. Same honesty requirement as item 6: say it in the UI.
+
+**Effort:** small (P0), medium (P1), medium (P2). **Differentiation:** high, and of an unusual
+kind — the detection is commodity and the *fix* is not. Lighthouse, PageSpeed and every SEO
+extension in the table above stop at an estimate; none of them hand back a file.
+
+---
+
 # Recommendation
 
 > **Done.** 1, 3 and 4 shipped in v2.2.0 — see `CHANGELOG.md`. What follows is the original
@@ -218,6 +476,12 @@ The bridge that makes this credible rather than folklore: **Google's own Lightho
 > exactly as the honest weighting below predicted**, and the pixel budgets needed calibrating
 > against the character guidance (60 English characters ≈ 540px, 160 ≈ 911px) rather than being
 > taken on faith.
+>
+> **Where item 8 sits:** after 5, before 6. It is behind 5 because 5 is pure formatting on data
+> already held and finishes the most-requested feature in the category, and because 5's images
+> CSV gains a weight column for free once 8 exists. It is ahead of 6 because 8's P0 is smaller
+> than 6, because it takes 6's most interesting half with it, and because 8 ends in a fix while
+> 6 ends in a number. **Order from here: 2b/2c → 5 → 8 → 6 → 7.**
 
 **Build 1, 3 and 4 first.** All three are small, all three fix real defects, and together they give you a release with a story: *the only page auditor that measures Persian and Arabic correctly, catches `noindex` delivered by header, and knows which rich results Google retired.*
 
@@ -238,6 +502,8 @@ The RTL opportunity is a **verified defect with unverified demand**. I confirmed
 ## Sources
 
 Google: [AI features](https://developers.google.com/search/docs/appearance/ai-features) · [AI optimization guide](https://developers.google.com/search/docs/fundamentals/ai-optimization-guide) · [Robots meta / X-Robots-Tag](https://developers.google.com/search/docs/crawling-indexing/robots-meta-tag) · [JavaScript SEO basics](https://developers.google.com/search/docs/crawling-indexing/javascript/javascript-seo-basics) · [Structured data policies](https://developers.google.com/search/docs/appearance/structured-data/sd-policies) · [Search gallery](https://developers.google.com/search/docs/appearance/structured-data/search-gallery) · [Documentation updates](https://developers.google.com/search/updates) · [Lighthouse agentic browsing](https://developer.chrome.com/docs/lighthouse/agentic-browsing/scoring) · [web.dev Web Vitals](https://web.dev/articles/vitals)
+
+Images and encoding: [web.dev — optimize LCP](https://web.dev/articles/optimize-lcp) · [web.dev — fetchpriority](https://web.dev/articles/fetch-priority) · [MDN — OffscreenCanvas.convertToBlob](https://developer.mozilla.org/en-US/docs/Web/API/OffscreenCanvas/convertToBlob) · [MDN — encodedBodySize](https://developer.mozilla.org/en-US/docs/Web/API/PerformanceResourceTiming/encodedBodySize) · [MDN — Timing-Allow-Origin](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Timing-Allow-Origin) · [Squoosh](https://github.com/GoogleChromeLabs/squoosh) · [jSquash](https://github.com/jamsinclair/jSquash)
 
 Crawler docs: [OpenAI bots](https://developers.openai.com/api/docs/bots) · [Anthropic crawler](https://support.claude.com/en/articles/8896518-does-anthropic-crawl-data-from-the-web-and-how-can-site-owners-block-the-crawler) · [Perplexity bots](https://docs.perplexity.ai/guides/bots)
 
