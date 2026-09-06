@@ -121,4 +121,31 @@ const HEADERS = `<!DOCTYPE html>
 </body>
 </html>`;
 
-module.exports = { CLEAN, RTL_BROKEN, RTL_GOOD, SCHEMA, HEADERS };
+// Images and links with enough variety to exercise the inventory tables behind the CSV
+// export: alt present/absent, a real decoded image, an external link, a nofollow, and a
+// value that a spreadsheet would execute if the export did not neutralise it.
+const PX =
+  "data:image/gif;base64,R0lGODlhAQABAIAAAP///wAAACH5BAEAAAAALAAAAAABAAEAAAICRAEAOw==";
+
+const ASSETS = `<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A gallery page with images and links to export</title>
+<meta name="description" content="This fixture exists to give the image and link inventories something to describe: images with and without alt text, internal and external links, and a nofollow.">
+<link rel="canonical" href="https://localhost:8443/assets.html">
+</head>
+<body>
+<h1>Gallery</h1>
+<p>${"Some prose so the page is not flagged as thin content while the export is tested. ".repeat(12)}</p>
+<img src="${PX}" alt="=SUM(A1:A9) a caption that a spreadsheet would run as a formula" width="120" height="80">
+<img src="${PX}" width="40" height="40">
+<img src="${PX}" alt="" loading="lazy" width="60" height="60">
+<a href="/internal.html">An internal link</a>
+<a href="https://example.com/out" target="_blank" rel="noopener">An external link</a>
+<a href="/sponsored.html" rel="nofollow">A nofollow internal link</a>
+</body>
+</html>`;
+
+module.exports = { CLEAN, RTL_BROKEN, RTL_GOOD, SCHEMA, HEADERS, ASSETS };

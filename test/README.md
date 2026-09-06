@@ -26,6 +26,11 @@ npm run report  # renders report.html in both languages and screenshots it
 | `headers-otherbot.html` | A directive scoped to a bot we do not report on is ignored rather than mis-reported. |
 | `headers-ok.html` | `max-snippet:-1` is not read as a restriction. |
 | `schema.html` | Retired `FAQPage` and `HowTo`, deprecated sitelinks searchbox, and a JSON-LD price that appears nowhere on the page — while a rating that *is* on the page stays unflagged. |
+| `assets.html` | The developer hand-off: the image and link inventories, all three CSVs, the ticket format and copy-all-errors. Its first image carries an `alt` shaped like a spreadsheet formula, so the export's injection guard is exercised on every run rather than trusted. |
 
-Both panel screenshots and both report screenshots are written next to the harness. Look
-at them; the RTL ones are where layout regressions actually show up.
+The export assertions drive the real panel — a click on the export menu, a real download
+event, and a stubbed `navigator.clipboard` whose argument is read back — rather than calling
+the builders directly, because the thing that breaks is the wiring, not the string joining.
+
+Both panel screenshots and both report screenshots are written next to the harness, plus
+`panel-export.png`. Look at them; the RTL ones are where layout regressions actually show up.

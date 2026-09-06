@@ -45,9 +45,9 @@ The second pattern is **trust burned by dark patterns**, not by bad analysis. ME
 
 Ordered by what I would build first.
 
-> **Status, updated with v2.2.0:** items **1**, **3** and **4** are shipped. Item 2a
+> **Status, updated with v2.3.0:** items **1**, **3**, **4** and **5** are shipped. Item 2a
 > (`nosnippet` / `max-snippet`) came along with item 3, since both read the same response.
-> Items 2b, 2c, 5, 6, 7 and 8 are still open. The per-item headings below carry their own status.
+> Items 2b, 2c, 6, 7 and 8 are still open. The per-item headings below carry their own status.
 
 > **Added 5 September 2026:** item **8**, image weight and LCP. It is not from the August
 > competitor sweep — it comes out of the same question item 6 raises (`LargestContentfulPaint`
@@ -176,7 +176,7 @@ While you are in there, the highest-value schema check nobody does: **markup tha
 
 ---
 
-## 5. Turn a finding into something a developer can act on — ○ open, next up
+## 5. Turn a finding into something a developer can act on — ✅ shipped in v2.3.0
 
 The verified #1 user need is egress, and there is a documented handoff problem behind it: an extension says `title too long`; a developer ticket needs the URL, current value, proposed value, the component responsible, and an acceptance criterion. That translation is 100% manual today and **no extension emits a ticket.**
 
@@ -189,6 +189,16 @@ You are further along here than any free competitor — you have the PDF and a t
 You already store everything needed for this. It is mostly formatting.
 
 **Effort:** small. **Differentiation:** medium on CSV (several competitors have it), high on the dev-ticket format (nobody does it).
+
+**What shipping it actually took, for the next item's estimate:** the ticket and the findings
+CSV were formatting on data already held, as predicted. The images/links CSVs were not — the
+engine held *findings about* images and links but no inventory *of* them, so `report.tables`
+is new (raw rows, capped at 1000, with the untruncated total kept). Two decisions worth
+carrying forward: the findings CSV is **one row per element**, because joining selectors into
+one cell repeats the truncation bug v2.2.1 removed from the panel; and every exported cell is
+**neutralised against spreadsheet formula injection**, since a value lifted off the audited
+page starting with `=` executes when the file is opened in Excel. Any future export inherits
+that second obligation.
 
 ---
 
@@ -477,11 +487,11 @@ extension in the table above stop at an estimate; none of them hand back a file.
 > against the character guidance (60 English characters ≈ 540px, 160 ≈ 911px) rather than being
 > taken on faith.
 >
-> **Where item 8 sits:** after 5, before 6. It is behind 5 because 5 is pure formatting on data
+> **Where item 8 sits:** after 5 (now shipped), before 6. It is behind 5 because 5 is pure formatting on data
 > already held and finishes the most-requested feature in the category, and because 5's images
 > CSV gains a weight column for free once 8 exists. It is ahead of 6 because 8's P0 is smaller
 > than 6, because it takes 6's most interesting half with it, and because 8 ends in a fix while
-> 6 ends in a number. **Order from here: 2b/2c → 5 → 8 → 6 → 7.**
+> 6 ends in a number. **Order from here: 2b/2c → 8 → 6 → 7.**
 
 **Build 1, 3 and 4 first.** All three are small, all three fix real defects, and together they give you a release with a story: *the only page auditor that measures Persian and Arabic correctly, catches `noindex` delivered by header, and knows which rich results Google retired.*
 

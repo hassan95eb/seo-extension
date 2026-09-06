@@ -36,6 +36,44 @@ async function auditPage(page, url, wantHeaders) {
 const codes = (r) => r.issues.map((i) => i.code);
 const find = (r, c) => r.issues.find((i) => i.code === c);
 
+/* Opens the panel on a page with chrome.* stubbed, exactly as CLAUDE.md describes.
+ * navigator.clipboard is stubbed too, so the copy paths can be asserted on without
+ * granting clipboard permissions or reading the real system clipboard.
+ */
+async function openPanel(page, url, lang) {
+  await page.goto(url, { waitUntil: "load" });
+  await page.addScriptTag({ content: read("i18n.js") });
+  await page.addScriptTag({ content: read("audit.js") });
+  await page.evaluate((l) => {
+    const store = { seoLensLang: l };
+    window.chrome = {
+      storage: { local: {
+        get: (k, cb) => cb(store),
+        set: (o, cb) => { Object.assign(store, o); cb && cb(); },
+        remove: (k, cb) => { cb && cb(); }
+      } },
+      runtime: {
+        sendMessage: () => {},
+        onMessage: { addListener: (fn) => { window.__listener = fn; } }
+      }
+    };
+    window.__clip = null;
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText: (s) => { window.__clip = s; return Promise.resolve(); } }
+    });
+    window.__panel = () => {
+      const h = Array.from(document.documentElement.children).find(
+        (e) => e.id && e.id.indexOf("seo-lens-root-") === 0 && e.shadowRoot && e.shadowRoot.querySelector("#sl-panel")
+      );
+      return h ? h.shadowRoot : null;
+    };
+  }, lang);
+  await page.addScriptTag({ content: read("content.js") });
+  await page.evaluate(() => window.__listener({ type: "SEO_LENS_TOGGLE" }, {}, () => {}));
+  await page.waitForTimeout(1200);
+}
+
 (async () => {
   const server = await start(
     fs.readFileSync(path.join(__dirname, "cert.pem")),
@@ -145,6 +183,81 @@ const find = (r, c) => r.issues.find((i) => i.code === c);
     check(`${name} panel renders`, !!rendered && rendered.items > 0, rendered ? `dir=${rendered.dir} score=${rendered.score} items=${rendered.items} · ${rendered.firstTitle}` : "no panel");
     console.log(`        screenshot: ${shot}`);
   }
+
+  /* ---- 6. developer hand-off: inventories, CSV, ticket ---- */
+  console.log("\ndeveloper export");
+  await openPanel(page, `${B}/assets.html`, "en");
+
+  const tables = await page.evaluate(() => {
+    const r = window.__SEO_LENS_AUDIT__();
+    return {
+      images: r.tables.images.length,
+      imagesTotal: r.tables.imagesTotal,
+      firstAlt: r.tables.images[0].alt,
+      secondHasAlt: r.tables.images[1].hasAlt,
+      scopes: r.tables.links.map((l) => l.scope).join(","),
+      nofollow: r.tables.links.filter((l) => l.nofollow).length,
+      links: r.tables.links.length
+    };
+  });
+  check("image inventory covers every image", tables.images === 3 && tables.imagesTotal === 3, `${tables.images} rows`);
+  check("missing alt recorded as hasAlt=false", tables.secondHasAlt === false);
+  check("link scope recorded per link", tables.scopes === "internal,external,internal", tables.scopes);
+  check("nofollow recorded", tables.nofollow === 1, `${tables.links} links`);
+
+  async function exportCsv(which) {
+    const [dl] = await Promise.all([
+      page.waitForEvent("download"),
+      page.evaluate((w) => {
+        const sh = window.__panel();
+        sh.querySelector("#sl-export").click();
+        sh.querySelector('.sl-menu button[data-x="' + w + '"]').click();
+      }, which)
+    ]);
+    return fs.readFileSync(await dl.path(), "utf8");
+  }
+
+  const fcsv = await exportCsv("findings");
+  check("findings CSV starts with a BOM", fcsv.charCodeAt(0) === 0xfeff, "so Excel reads it as UTF-8");
+  check("findings CSV has a header row", fcsv.split("\r\n")[0] === '﻿"Severity","Category","Code","Issue","Detail","Fix","Elements","Element path","Element text","Page URL"');
+  check("findings CSV carries the codes", fcsv.indexOf("IMG_NO_ALT") > -1);
+  check("findings CSV is one row per element", fcsv.split("\r\n").filter((l) => l.indexOf("IMG_NO_ALT") > -1).length >= 1);
+  check("passing checks are not exported as findings", fcsv.indexOf("TITLE_OK") === -1);
+
+  const icsv = await exportCsv("images");
+  check("images CSV lists every image", icsv.trim().split("\r\n").length === 4, `${icsv.trim().split("\r\n").length - 1} rows`);
+  check(
+    "a formula-shaped alt is neutralised", icsv.indexOf('"\'=SUM(A1:A9)') > -1,
+    "leading apostrophe, so Excel treats it as text"
+  );
+
+  const lcsv = await exportCsv("links");
+  check("links CSV lists every link", lcsv.trim().split("\r\n").length === 4);
+  check("links CSV resolves hrefs to absolute", lcsv.indexOf("https://localhost:8443/internal.html") > -1);
+  check("links CSV names the scope", lcsv.indexOf('"external"') > -1);
+
+  const ticket = await page.evaluate(() => {
+    const sh = window.__panel();
+    const item = Array.from(sh.querySelectorAll(".sl-item")).find((n) => n.querySelector(".sl-ticket"));
+    item.querySelector(".sl-row").click();
+    item.querySelector(".sl-ticket").click();
+    return window.__clip;
+  });
+  check("ticket starts with a pasteable title", !!ticket && ticket.indexOf("[SEO] ") === 0, ticket ? ticket.split("\n")[0] : "nothing copied");
+  check("ticket carries the URL", !!ticket && ticket.indexOf(`${B}/assets.html`) > -1);
+  check("ticket carries an acceptance criterion", !!ticket && /Acceptance criterion:/.test(ticket));
+  check("ticket carries the element selector", !!ticket && /Affected elements:/.test(ticket));
+
+  const errs = await page.evaluate(() => {
+    const sh = window.__panel();
+    sh.querySelector("#sl-export").click();
+    sh.querySelector('.sl-menu button[data-x="errors"]').click();
+    return window.__clip;
+  });
+  check("copy-all-errors copies every error as a ticket", !!errs && errs.indexOf("[SEO] ") === 0 && errs.indexOf("IMG_NO_ALT") > -1);
+
+  await page.screenshot({ path: path.join(__dirname, "panel-export.png") });
+  console.log(`        screenshot: ${path.join(__dirname, "panel-export.png")}`);
 
   await browser.close();
   server.close();

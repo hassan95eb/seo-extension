@@ -10,6 +10,7 @@ const ROUTES = {
   "/rtl-broken.html": { body: F.RTL_BROKEN, headers: {} },
   "/rtl-good.html": { body: F.RTL_GOOD, headers: {} },
   "/schema.html": { body: F.SCHEMA, headers: {} },
+  "/assets.html": { body: F.ASSETS, headers: {} },
   "/headers.html": {
     body: F.HEADERS,
     headers: {

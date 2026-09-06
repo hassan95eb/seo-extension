@@ -17,6 +17,12 @@
   // are never truncated, low enough to bound memory on pathological documents.
   const PATHS_CAP = 300;
 
+  // Upper bound on rows kept in the image and link inventories (report.tables). These
+  // are not findings — they are the raw tables the CSV export hands to a developer —
+  // so the cap is higher, and the untruncated total is reported alongside it so the
+  // export can say plainly that it was cut rather than quietly shipping a short file.
+  const TABLE_CAP = 1000;
+
   const GENERIC_ANCHORS = [
     "click here", "here", "read more", "more", "link", "this", "learn more", "see more",
     "اینجا", "کلیک کنید", "اینجا کلیک کنید", "بیشتر", "ادامه مطلب", "لینک",
@@ -240,9 +246,30 @@
     /* ---------- Images ---------- */
     const imgs = Array.from(doc.images || []);
     const noAlt = [], emptyAlt = [], longAlt = [], noDims = [], oversized = [], noLazy = [], genericName = [];
+    // Inventory rows for the CSV export. Raw values only — no wording, no verdicts:
+    // the same rule that keeps display strings out of this file (hard rule 1) applies
+    // to a table just as much as to a finding.
+    const imageRows = [];
     imgs.forEach((img) => {
       const vis = isVisible(img);
       const alt = img.getAttribute("alt");
+      if (imageRows.length < TABLE_CAP) {
+        let abs = img.getAttribute("src") || "";
+        try { abs = abs ? new URL(abs, location.href).href : ""; } catch (e) { /* keep raw */ }
+        imageRows.push({
+          src: abs,
+          alt: alt == null ? "" : alt,
+          hasAlt: alt != null,
+          width: Math.round(img.width) || 0,
+          height: Math.round(img.height) || 0,
+          naturalWidth: img.naturalWidth || 0,
+          naturalHeight: img.naturalHeight || 0,
+          loading: img.getAttribute("loading") || "",
+          visible: vis,
+          aboveFold: aboveFold(img),
+          path: cssPath(img)
+        });
+      }
       if (alt === null) noAlt.push(img);
       else if (txt(alt) === "" && vis && img.width > 60 && img.height > 60) emptyAlt.push(img);
       else if (alt && alt.length > 125) longAlt.push(img);
@@ -276,19 +303,42 @@
     let internal = 0, external = 0, nofollow = 0;
     const host = location.hostname;
 
+    // Inventory rows for the CSV export — same contract as imageRows above: raw values,
+    // and `scope` as a token the way `severity` is a token, so i18n.js owns the wording.
+    const linkRows = [];
+    const addLinkRow = (a, href, label, rel, abs, scope, vis) => {
+      if (linkRows.length >= TABLE_CAP) return;
+      linkRows.push({
+        href: abs ? abs.href : (href == null ? "" : href),
+        text: label,
+        rel: rel,
+        target: a.getAttribute("target") || "",
+        scope: scope,
+        nofollow: rel.includes("nofollow"),
+        visible: vis,
+        path: cssPath(a)
+      });
+    };
+
     anchors.forEach((a) => {
       const href = a.getAttribute("href");
       const label = txt(a.textContent) || txt(a.getAttribute("aria-label")) || txt(a.getAttribute("title"));
       const imgAlt = a.querySelector("img") ? txt(a.querySelector("img").getAttribute("alt")) : "";
       const vis = isVisible(a);
-      if (href === null) { if (vis) noHref.push(a); return; }
+      const relAttr = (a.getAttribute("rel") || "").toLowerCase();
+      if (href === null) {
+        addLinkRow(a, href, label || imgAlt, relAttr, null, "other", vis);
+        if (vis) noHref.push(a);
+        return;
+      }
       if (/^#$|^javascript:void/i.test(href.trim()) && vis) hashOnly.push(a);
 
       let abs = null;
       try { abs = new URL(href, location.href); } catch (e) { /* ignore */ }
-      const rel = (a.getAttribute("rel") || "").toLowerCase();
+      const rel = relAttr;
       const httpish = abs && /^https?:$/.test(abs.protocol);
       const isExternal = httpish && abs.hostname !== host;
+      addLinkRow(a, href, label || imgAlt, rel, abs, httpish ? (isExternal ? "external" : "internal") : "other", vis);
       if (httpish) { if (isExternal) external++; else internal++; }
       if (rel.includes("nofollow")) {
         nofollow++;
@@ -605,6 +655,12 @@
       title,
       brand: siteBranding(),
       issues,
+      // Raw inventories for the CSV export. `total` is the untruncated count, so an
+      // export from a 4000-link page can say it was capped instead of pretending.
+      tables: {
+        images: imageRows, imagesTotal: imgs.length,
+        links: linkRows, linksTotal: anchors.length
+      },
       generatedAt: new Date().toISOString()
     });
   }

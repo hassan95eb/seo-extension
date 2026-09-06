@@ -275,6 +275,152 @@
     );
   }
 
+  /* ---------- developer hand-off ----------
+   * The verified #1 request in this category is getting findings *out*. The PDF is the
+   * client-facing exit; these three are the developer-facing ones: a CSV of the findings,
+   * CSVs of the image and link inventories, and a finding formatted as a ticket that can
+   * be pasted into a tracker without being retyped.
+   */
+
+  // A spreadsheet treats a cell starting with = + - or @ as a formula, so a value lifted
+  // off the audited page can execute inside the user's Excel. Every cell is quoted,
+  // internal quotes are doubled, and a formula-leading cell is prefixed. Same reasoning
+  // as hard rule 8: text taken off a page is never trusted by the surface that shows it.
+  function csvCell(v) {
+    let s = v == null ? "" : String(v);
+    s = s.replace(/[\r\n]+/g, " ");
+    if (/^[=+\-@\t]/.test(s)) s = "'" + s;
+    return '"' + s.replace(/"/g, '""') + '"';
+  }
+  const csvRow = (cells) => cells.map(csvCell).join(",");
+  // The BOM is not decoration: without it Excel reads a UTF-8 CSV as windows-1252 and
+  // every Persian string arrives as mojibake.
+  const csvFile = (rows) => "\uFEFF" + rows.map(csvRow).join("\r\n") + "\r\n";
+
+  function csvName(kind) {
+    const host = (location.hostname || "page").replace(/[^a-zA-Z0-9.-]/g, "-");
+    return `seo-lens-${kind}-${host}-${new Date().toISOString().slice(0, 10)}.csv`;
+  }
+
+  function downloadCsv(kind, rows, cappedTotal) {
+    if (rows.length < 2) { flash(t("csvEmpty")); return; }
+    const text = csvFile(rows);
+    let url = null;
+    try {
+      url = URL.createObjectURL(new Blob([text], { type: "text/csv;charset=utf-8" }));
+      // The anchor is created inside the panel's own shadow root and removed again, so
+      // the audited document is never touched — hard rule 6.
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = csvName(kind);
+      a.style.display = "none";
+      shadow.appendChild(a);
+      a.click();
+      a.remove();
+      flash(cappedTotal ? t("csvCapped", { n: rows.length - 1 }) : t("csvSaved"));
+    } catch (e) {
+      navigator.clipboard.writeText(text).then(
+        () => flash(t("csvClipboard")), () => flash(t("copyFail"))
+      );
+    } finally {
+      if (url) setTimeout(() => URL.revokeObjectURL(url), 5000);
+    }
+  }
+
+  // One row per (finding × element) rather than per finding. A finding covering 23 images
+  // is 23 rows a developer can sort and filter, and nothing has to be truncated into a
+  // single cell — which is the bug v2.2.1 spent a release removing from the panel.
+  function findingsRows() {
+    const head = [
+      t("hSeverity"), t("hCategory"), t("hCode"), t("hIssue"), t("hDetail"),
+      t("hFix"), t("hCount"), t("hPath"), t("hSnippet"), t("hUrl")
+    ];
+    const rows = [head];
+    report.issues.forEach((i) => {
+      if (i.severity === "pass") return;
+      const m = tIssue(i);
+      const base = [
+        t(SEV_META[i.severity].uiKey), t("cat" + i.cat), i.code, m.t,
+        [m.d, i.detailRaw].filter(Boolean).join(" — "), m.f, i.count || 0
+      ];
+      const paths = i.paths || [];
+      if (!paths.length) rows.push(base.concat(["", "", report.url]));
+      else paths.forEach((p) => rows.push(base.concat([p.path, p.text || "", report.url])));
+    });
+    return rows;
+  }
+
+  const yesNo = (b) => (b ? t("csvYes") : t("csvNo"));
+
+  function imagesRows() {
+    const tbl = (report.tables && report.tables.images) || [];
+    const head = [
+      t("hSrc"), t("hAlt"), t("hHasAlt"), t("hRendered"), t("hNatural"),
+      t("hLoading"), t("hVisible"), t("hAboveFold"), t("hPath")
+    ];
+    return [head].concat(tbl.map((r) => [
+      r.src, r.alt, yesNo(r.hasAlt), `${r.width}×${r.height}`,
+      `${r.naturalWidth}×${r.naturalHeight}`, r.loading, yesNo(r.visible),
+      yesNo(r.aboveFold), r.path
+    ]));
+  }
+
+  function linksRows() {
+    const tbl = (report.tables && report.tables.links) || [];
+    const head = [
+      t("hHref"), t("hText"), t("hScope"), t("hRel"), t("hTarget"),
+      t("hNofollow"), t("hVisible"), t("hPath")
+    ];
+    return [head].concat(tbl.map((r) => [
+      r.href, r.text, t("scope" + r.scope), r.rel, r.target,
+      yesNo(r.nofollow), yesNo(r.visible), r.path
+    ]));
+  }
+
+  const capped = (kind) => {
+    const T = report.tables;
+    if (!T) return false;
+    return kind === "images" ? T.imagesTotal > T.images.length : T.linksTotal > T.links.length;
+  };
+
+  // A finding a developer can act on needs the URL, the selector, the current value, the
+  // reason and a way to tell when it is done. The acceptance criterion is generic on
+  // purpose — "this code no longer appears in an audit of this URL" is verifiable with
+  // the same tool that raised it, which is the whole point of shipping it as a ticket.
+  function ticketFor(issue) {
+    const m = tIssue(issue);
+    const L = [`[SEO] ${m.t}`, ""];
+    L.push(`${t("tkUrl")} ${report.url}`);
+    L.push(`${t("tkSeverity")} ${t(SEV_META[issue.severity].uiKey)} · ${t("tkCategory")} ${t("cat" + issue.cat)} · ${issue.code}`);
+    const paths = issue.paths || [];
+    if (paths.length) {
+      L.push("", `${t("tkElements")} (${paths.length})`);
+      paths.forEach((p) => L.push(`  - ${p.path}${p.text ? `  « ${p.text} »` : ""}`));
+    }
+    if (issue.detailRaw) L.push("", `${t("tkCurrent")} ${issue.detailRaw}`);
+    if (m.d) L.push("", `${t("tkWhy")} ${m.d}`);
+    if (m.f) L.push("", `${t("fixLabel")} ${m.f}`);
+    L.push("", `${t("tkAccept")} ${t("tkAcceptText", { code: issue.code })}`);
+    L.push("", `— ${t("tkFound")} · ${SIGN} · github.com/hassan95eb/seo-extension`);
+    return L.join("\n");
+  }
+
+  function copyTicket(issue) {
+    navigator.clipboard.writeText(ticketFor(issue)).then(
+      () => flash(t("ticketCopied")), () => flash(t("copyFail"))
+    );
+  }
+
+  function copyAllErrors() {
+    if (!report) return;
+    const errs = report.issues.filter((i) => i.severity === "error");
+    if (!errs.length) { flash(t("noErrors")); return; }
+    const text = errs.map(ticketFor).join("\n\n" + "─".repeat(46) + "\n\n");
+    navigator.clipboard.writeText(text).then(
+      () => flash(t("errorsCopied", { n: errs.length })), () => flash(t("copyFail"))
+    );
+  }
+
   /* ---------- panel ---------- */
   function buildPanel() {
     host = document.createElement("div");
@@ -336,6 +482,15 @@
         <button id="sl-pdf" class="primary">${t("pdf")}</button>
         <button id="sl-copy">${t("copy")}</button>
       </div>
+      <div class="sl-tools sl-exp">
+        <button id="sl-export">${t("exportBtn")}</button>
+        <div class="sl-menu" id="sl-menu" hidden>
+          <button data-x="findings">${t("csvFindings")}</button>
+          <button data-x="images">${t("csvImages")}</button>
+          <button data-x="links">${t("csvLinks")}</button>
+          <button data-x="errors">${t("copyErrors")}</button>
+        </div>
+      </div>
       <div class="sl-filters">
         <button class="sl-filter" data-f="all">${t("fAll")}</button>
         <button class="sl-filter e" data-f="error">${t("fError")} <span id="sl-cnt-error">0</span></button>
@@ -367,6 +522,30 @@
     });
     shadow.querySelector("#sl-copy").addEventListener("click", copyReport);
     shadow.querySelector("#sl-pdf").addEventListener("click", openPdfReport);
+
+    const menu = shadow.querySelector("#sl-menu");
+    const expBtn = shadow.querySelector("#sl-export");
+    const closeMenu = () => { menu.hidden = true; expBtn.classList.remove("on"); };
+    expBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      menu.hidden = !menu.hidden;
+      expBtn.classList.toggle("on", !menu.hidden);
+    });
+    menu.querySelectorAll("button").forEach((b) => {
+      b.addEventListener("click", (e) => {
+        e.stopPropagation();
+        closeMenu();
+        if (!report) return;
+        const what = b.dataset.x;
+        if (what === "findings") downloadCsv("findings", findingsRows(), false);
+        else if (what === "images") downloadCsv("images", imagesRows(), capped("images"));
+        else if (what === "links") downloadCsv("links", linksRows(), capped("links"));
+        else if (what === "errors") copyAllErrors();
+      });
+    });
+    shadow.addEventListener("click", (e) => {
+      if (!menu.hidden && !e.target.closest("#sl-menu, #sl-export")) closeMenu();
+    });
     shadow.querySelectorAll(".sl-filter").forEach((b) => {
       b.classList.toggle("on", b.dataset.f === filter);
       b.addEventListener("click", () => {
@@ -453,11 +632,16 @@
           ${detail ? `<p class="sl-desc">${detail}</p>` : ""}
           ${msg.f ? `<p class="sl-fix"><b>${esc(t("fixLabel"))}</b> ${esc(msg.f)}</p>` : ""}
           ${targets}
-          ${canHl
-            ? `<button class="sl-hl">${esc(t("showOnPage"))}</button>`
-            : (i.count
-                ? `<span class="sl-note">${esc(t("inHead"))}</span>`
-                : `<span class="sl-note">${esc(t("pageLevel"))}</span>`)}
+          <div class="sl-acts">
+            ${canHl
+              ? `<button class="sl-hl">${esc(t("showOnPage"))}</button>`
+              : (i.count
+                  ? `<span class="sl-note">${esc(t("inHead"))}</span>`
+                  : `<span class="sl-note">${esc(t("pageLevel"))}</span>`)}
+            ${i.severity === "pass" || i.severity === "stat"
+              ? ""
+              : `<button class="sl-ticket">${esc(t("copyTicket"))}</button>`}
+          </div>
         </div>
       </div>`;
     }).join("");
@@ -479,6 +663,13 @@
           const opening = rest.hasAttribute("hidden");
           if (opening) rest.removeAttribute("hidden"); else rest.setAttribute("hidden", "");
           moreBtn.textContent = opening ? moreBtn.dataset.less : moreBtn.dataset.more;
+        });
+      }
+      const tk = node.querySelector(".sl-ticket");
+      if (tk) {
+        tk.addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (issue) copyTicket(issue);
         });
       }
       const btn = node.querySelector(".sl-hl");
@@ -603,6 +794,17 @@
   .sl-hl{background:#7c3aed;border:none;color:#fff;padding:6px 12px;border-radius:7px;cursor:pointer;
     font-size:11.5px;font-family:inherit;font-weight:600;}
   .sl-hl:hover{background:#6d28d9;}
+  .sl-acts{display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
+  .sl-ticket{background:transparent;border:1px solid #3b4a63;color:#93c5fd;padding:6px 10px;border-radius:7px;
+    cursor:pointer;font-size:11px;font-family:inherit;}
+  .sl-ticket:hover{background:#182541;color:#bfdbfe;border-color:#4b5b76;}
+  .sl-exp{position:relative;}
+  .sl-menu{position:absolute;top:calc(100% + 4px);inset-inline-start:12px;inset-inline-end:12px;z-index:5;
+    background:#131f36;border:1px solid #2b3a55;border-radius:10px;padding:4px;
+    box-shadow:0 16px 34px rgba(0,0,0,.5);display:flex;flex-direction:column;gap:2px;}
+  .sl-menu button{background:transparent;border:none;color:#cbd5e1;padding:8px 10px;border-radius:7px;
+    cursor:pointer;font-size:11.5px;font-family:inherit;text-align:start;width:100%;}
+  .sl-menu button:hover{background:#1e2c49;color:#fff;}
   .sl-note{font-size:10.5px;color:#64748b;}
   .sl-empty{padding:34px 16px;text-align:center;color:#64748b;font-size:12px;}
   .sl-foot{padding:8px 12px;border-top:1px solid #1e293b;font-size:10.5px;color:#64748b;text-align:center;
