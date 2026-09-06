@@ -1,5 +1,24 @@
 # Changelog
 
+## v2.3.1
+
+### The export menu never closed
+
+`.sl-menu` sets `display:flex`, which silently outranks the user-agent stylesheet's
+`[hidden]{display:none}` — a class selector beats it. So the menu rendered permanently
+open under the toolbar and clicking the button appeared to do nothing: the `hidden`
+attribute was toggling correctly the whole time, it just had no effect on layout.
+
+- `.sl-menu[hidden]{display:none}` added, which is what any element whose CSS sets
+  `display` needs if it is also hidden by attribute.
+- The outside-click handler now lives on `document` and is registered once, instead of
+  being re-added to the shadow root on every language switch. Clicking anywhere that is
+  not the button or a menu item closes the menu — including on the audited page, which
+  the previous shadow-scoped listener never saw.
+- The harness now asserts the menu's **computed display**, not its attribute. The v2.3.0
+  test drove the menu and passed, because it clicked the button and then the item and
+  never asked whether anything was actually visible. Removing the fix now fails the run.
+
 ## v2.3.0
 
 Gap-analysis item 5: developer hand-off. The verified number-one request across every

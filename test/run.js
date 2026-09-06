@@ -205,6 +205,24 @@ async function openPanel(page, url, lang) {
   check("link scope recorded per link", tables.scopes === "internal,external,internal", tables.scopes);
   check("nofollow recorded", tables.nofollow === 1, `${tables.links} links`);
 
+  // Asserted through getComputedStyle rather than the hidden attribute: v2.3.0 shipped a
+  // menu whose `.sl-menu{display:flex}` outranked the UA sheet's `[hidden]{display:none}`,
+  // so the attribute toggled correctly while the menu stayed on screen for ever. A test
+  // that reads the attribute would have passed.
+  const menuState = await page.evaluate(() => {
+    const sh = window.__panel();
+    const menu = sh.querySelector("#sl-menu");
+    const shown = () => getComputedStyle(menu).display !== "none";
+    const start = shown();
+    sh.querySelector("#sl-export").click();
+    const afterOpen = shown();
+    sh.querySelector(".sl-body").click();
+    return { start, afterOpen, afterOutside: shown() };
+  });
+  check("export menu starts closed", menuState.start === false, `display says ${menuState.start ? "visible" : "hidden"}`);
+  check("export menu opens on click", menuState.afterOpen === true);
+  check("export menu closes on an outside click", menuState.afterOutside === false);
+
   async function exportCsv(which) {
     const [dl] = await Promise.all([
       page.waitForEvent("download"),

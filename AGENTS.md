@@ -127,6 +127,11 @@ file as modified.
 
 ## Current state
 
+- **v2.3.1**: fixed the export menu, which rendered permanently open because
+  `.sl-menu{display:flex}` outranks the UA sheet's `[hidden]{display:none}`. Any element
+  in `PANEL_CSS` that sets `display` and is also hidden by attribute needs its own
+  `[hidden]` rule. The v2.3.0 test drove the menu and still passed — **assert computed
+  style, not the attribute**, whenever a test covers something being shown or hidden.
 - **v2.3.0** shipped: gap-analysis item 5, developer hand-off. Copy-as-ticket per finding,
   copy-all-errors, and three CSV exports (findings one-row-per-element, plus image and link
   inventories now kept on `report.tables`). Spreadsheet formula injection is neutralised in

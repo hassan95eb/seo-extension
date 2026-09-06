@@ -23,6 +23,8 @@
   let tracked = [], rafPending = false;
   let activeIssueId = null, highlightAllOn = false, filter = "all";
   let lang = "fa";
+  // Closes the export menu. Re-assigned by renderChrome(); a no-op before the first render.
+  let closeExportMenu = () => {};
 
   // How many element rows are shown before the "show more" toggle appears.
   const PATHS_PREVIEW = 10;
@@ -525,7 +527,10 @@
 
     const menu = shadow.querySelector("#sl-menu");
     const expBtn = shadow.querySelector("#sl-export");
-    const closeMenu = () => { menu.hidden = true; expBtn.classList.remove("on"); };
+    // Re-pointed at the current nodes on every renderChrome() — the language toggle
+    // rebuilds them — while the document listener that calls it is registered once.
+    closeExportMenu = () => { menu.hidden = true; expBtn.classList.remove("on"); };
+    const closeMenu = () => closeExportMenu();
     expBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       menu.hidden = !menu.hidden;
@@ -542,9 +547,6 @@
         else if (what === "links") downloadCsv("links", linksRows(), capped("links"));
         else if (what === "errors") copyAllErrors();
       });
-    });
-    shadow.addEventListener("click", (e) => {
-      if (!menu.hidden && !e.target.closest("#sl-menu, #sl-export")) closeMenu();
     });
     shadow.querySelectorAll(".sl-filter").forEach((b) => {
       b.classList.toggle("on", b.dataset.f === filter);
@@ -721,6 +723,11 @@
 
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && panelOpen) closePanel(); });
 
+  // Any click that is not the export button or a menu item closes the menu — including
+  // clicks on the audited page itself. Registered once for the lifetime of the content
+  // script; the button and the menu items stopPropagation, so this never fires for them.
+  document.addEventListener("click", () => closeExportMenu());
+
   const PANEL_CSS = `
   :host{all:initial;}
   *{box-sizing:border-box;}
@@ -799,6 +806,9 @@
     cursor:pointer;font-size:11px;font-family:inherit;}
   .sl-ticket:hover{background:#182541;color:#bfdbfe;border-color:#4b5b76;}
   .sl-exp{position:relative;}
+  /* The [hidden] attribute is display:none only in the UA sheet, which a class rule with
+     display:flex silently outranks — so the menu must hide itself explicitly. */
+  .sl-menu[hidden]{display:none;}
   .sl-menu{position:absolute;top:calc(100% + 4px);inset-inline-start:12px;inset-inline-end:12px;z-index:5;
     background:#131f36;border:1px solid #2b3a55;border-radius:10px;padding:4px;
     box-shadow:0 16px 34px rgba(0,0,0,.5);display:flex;flex-direction:column;gap:2px;}
