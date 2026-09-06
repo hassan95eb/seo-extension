@@ -111,7 +111,8 @@ goes with it.
 | **Images** | missing alt, empty alt on content images, overly long alt, generic filenames |
 | **Performance** | missing width/height (CLS), images served larger than displayed, missing lazy-load, render-blocking scripts |
 | **Links** | empty anchor text, generic anchors, `href="#"`, `<a>` without href, `target="_blank"` without `noopener`, nofollowed internal links, no internal links, link counts |
-| **Indexability** | canonical (missing / duplicate / empty / pointing elsewhere), noindex, page-level nofollow, `lang`, **`dir`** (missing, on `<body>`, or contradicting `lang`), non-self-referencing hreflang, **`X-Robots-Tag` response header** (`noindex`, `nofollow`, `nosnippet`, `max-snippet:0`, expired `unavailable_after`), **`Link: rel="canonical"` header conflicts** |
+| **Indexability** | canonical (missing / duplicate / empty / pointing elsewhere), noindex, page-level nofollow, `lang`, **`dir`** (missing, on `<body>`, or contradicting `lang`), non-self-referencing hreflang, **`X-Robots-Tag` response header** (`noindex`, `nofollow`, `nosnippet`, `max-snippet:0`, expired `unavailable_after`), **`Link: rel="canonical"` header conflicts**, **`robots.txt`** (this URL disallowed for Googlebot, `robots.txt` served as HTML, `robots.txt` returning 5xx) |
+| **AI visibility** | `/robots.txt` read for this exact URL: **search crawlers** blocked (`OAI-SearchBot`, `Claude-SearchBot`, `PerplexityBot` — the page cannot be cited in AI answers), **training crawlers** blocked (`GPTBot`, `ClaudeBot` — reported, but costs no points), and `Google-Extended`, which does **not** affect AI Overviews |
 | **Social** | Open Graph completeness, `twitter:card` |
 | **Structured data** | JSON-LD / microdata presence, malformed JSON, detected schema types, **rich-result types Google has retired** (with the retirement date), **schema values that do not appear on the page** |
 | **Technical** | viewport, disabled zoom, charset, favicon, HTTPS, mixed content, URL shape |
@@ -121,8 +122,8 @@ goes with it.
 
 Starts at 100: −9 per error, −4 per warning, −1 per notice.
 
-The `X-Robots-Tag` checks need a network round-trip, so they arrive a moment after the panel
-opens and the score updates when they land. Everything else is computed synchronously and the
+The `X-Robots-Tag` and `robots.txt` checks need a network round-trip, so they arrive a moment
+after the panel opens and the score updates when they land. Everything else is computed synchronously and the
 panel never waits.
 
 Purely descriptive measurements — currently the internal/external link counts — carry the

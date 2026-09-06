@@ -102,7 +102,7 @@ You already fixed one bidi bug in v2.0 (the `<bdi>` work in the CHANGELOG). Audi
 
 ---
 
-## 2. AI visibility — but only the parts that are actually documented — ◐ 2a shipped, 2b/2c open
+## 2. AI visibility — but only the parts that are actually documented — ◐ 2a and 2c shipped, 2b open
 
 Most "AI SEO" tooling is folklore. Three things here are documented by Google and are the real gates, and no extension surfaces them as AI-visibility signals.
 
@@ -122,7 +122,7 @@ You can measure this from a content script with no server: `fetch(location.href)
 
 This same diff catches a brutal, silent, DOM-invisible bug Google documents explicitly: **`noindex` present in the raw HTML and removed by JavaScript.** Google may skip rendering entirely when it sees `noindex`, so the page stays deindexed forever while every DOM-based tool reports it as perfectly fine. Ahrefs Toolbar is the only competitor doing any raw-vs-rendered comparison, and it does not frame it this way.
 
-### 2c. The AI crawler robots.txt matrix
+### 2c. The AI crawler robots.txt matrix — ✅ shipped in v2.4.0
 
 A genuinely common and expensive misconfiguration: sites blanket-blocked "OpenAI" in 2023–24 and killed their **ChatGPT search citations** while believing they only opted out of training. The bots are separate:
 
@@ -136,6 +136,14 @@ A genuinely common and expensive misconfiguration: sites blanket-blocked "OpenAI
 | `Google-Extended` | Gemini app grounding — **does not** affect AI Overviews |
 
 That last row is its own widespread myth. `robots.txt` is same-origin, so `fetch('/robots.txt')` needs no extra permission.
+
+> **Shipped in v2.4.0.** Built as three severity classes rather than one list, which is the
+> decision worth keeping: search crawlers cost points, training crawlers and `Google-Extended`
+> are `stat` because blocking them is a legitimate choice. Two things fell out of the same
+> parse and were worth more than expected — a URL disallowed for **Googlebot** (an error: never
+> crawled, so its `noindex` is never read either) and a `/robots.txt` that answers with HTML or
+> a 5xx. Writing a real matcher (groups, `*` fallback, longest-match with Allow winning ties,
+> `*`/`$`) was most of the work; the matrix itself was an afternoon.
 
 **Effort:** medium (2a and 2c small, 2b medium). **Differentiation:** high, and defensible from primary Google/OpenAI/Anthropic docs rather than SEO blogs.
 

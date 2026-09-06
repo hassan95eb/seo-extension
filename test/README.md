@@ -26,6 +26,9 @@ npm run report  # renders report.html in both languages and screenshots it
 | `headers-otherbot.html` | A directive scoped to a bot we do not report on is ignored rather than mis-reported. |
 | `headers-ok.html` | `max-snippet:-1` is not read as a restriction. |
 | `schema.html` | Retired `FAQPage` and `HowTo`, deprecated sitelinks searchbox, and a JSON-LD price that appears nowhere on the page — while a rating that *is* on the page stays unflagged. |
+| `robots.txt` + `ai-blocked.html` | The AI crawler matrix: a multi-agent group, a `*` wildcard rule and a `$`-anchored one, and the split between search crawlers (a warning) and training crawlers (a `stat` that costs nothing). One path-scoped `robots.txt` serves the whole origin, so `clean.html` stays genuinely unblocked. |
+| `private/page.html`, `private/public.html` | A URL disallowed for Googlebot is an error; an agent with no group of its own falls back to `*` while one with a group ignores `*` entirely; a longer `Allow` beats the folder `Disallow`. |
+| `:8444`, `:8445` | robots.txt is per-origin, so the two degenerate responses get their own servers: `/robots.txt` answering with HTML, and `/robots.txt` answering 503. |
 | `assets.html` | The developer hand-off: the image and link inventories, all three CSVs, the ticket format and copy-all-errors. Its first image carries an `alt` shaped like a spreadsheet formula, so the export's injection guard is exercised on every run rather than trusted. |
 
 The export assertions drive the real panel — a click on the export menu, a real download

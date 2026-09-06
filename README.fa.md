@@ -108,7 +108,8 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 | **تصاویر** | نبود alt، alt خالی روی تصویر محتوایی، alt بیش‌ازحد بلند، نام فایل بی‌معنی |
 | **پرفورمنس** | نبود width/height (CLS)، تصویر بزرگ‌تر از نیاز، نبود lazy-load، اسکریپت بلاک‌کننده رندر |
 | **لینک‌ها** | لینک بدون متن، انکر تکست کلیشه‌ای، `href="#"`، `<a>` بدون href، `target="_blank"` بدون `noopener`، nofollow داخلی، نبود لینک داخلی |
-| **ایندکس** | canonical (نبود / تکراری / خالی / اشاره به آدرس دیگر)، noindex، nofollow سراسری، `lang`، **`dir`** (نبود، روی `body`، یا در تضاد با `lang`)، hreflang بدون self-reference، **هدر `X-Robots-Tag`** (`noindex`، `nofollow`، `nosnippet`، `max-snippet:0`، `unavailable_after` گذشته)، **تضاد هدر `Link: rel="canonical"`** |
+| **ایندکس** | canonical (نبود / تکراری / خالی / اشاره به آدرس دیگر)، noindex، nofollow سراسری، `lang`، **`dir`** (نبود، روی `body`، یا در تضاد با `lang`)، hreflang بدون self-reference، **هدر `X-Robots-Tag`** (`noindex`، `nofollow`، `nosnippet`، `max-snippet:0`، `unavailable_after` گذشته)، **تضاد هدر `Link: rel="canonical"`**، **`robots.txt`** (بلاک بودن این آدرس برای گوگل‌بات، برگشتن HTML به‌جای robots.txt، خطای 5xx روی robots.txt) |
+| **دیده‌شدن در هوش مصنوعی** | خواندن `/robots.txt` برای همین آدرس: بلاک بودن **ربات‌های جستجو** (`OAI-SearchBot`، `Claude-SearchBot`، `PerplexityBot` — صفحه در پاسخ‌های هوش مصنوعی نقل نمی‌شود)، بلاک بودن **ربات‌های آموزش** (`GPTBot`، `ClaudeBot` — گزارش می‌شود ولی امتیازی کم نمی‌کند)، و `Google-Extended` که روی AI Overviews **اثری ندارد** |
 | **شبکه‌های اجتماعی** | کامل بودن Open Graph، `twitter:card` |
 | **داده ساختاریافته** | وجود JSON-LD/microdata، خراب بودن JSON، نمایش نوع اسکیما، **نوع‌هایی که گوگل بازنشسته کرده** (به همراه تاریخ)، **مقادیر اسکیما که روی صفحه دیده نمی‌شوند** |
 | **فنی** | viewport، غیرفعال بودن زوم، charset، favicon، HTTPS، محتوای مخلوط، ساختار URL |
@@ -118,7 +119,7 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 
 از ۱۰۰ شروع می‌شود: هر ایراد جدی ۹−، هر هشدار ۴−، هر نکته ۱−.
 
-چک‌های `X-Robots-Tag` یک رفت‌وبرگشت شبکه لازم دارند، پس کمی بعد از باز شدن پنل می‌رسند و
+چک‌های `X-Robots-Tag` و `robots.txt` یک رفت‌وبرگشت شبکه لازم دارند، پس کمی بعد از باز شدن پنل می‌رسند و
 امتیاز همان لحظه به‌روز می‌شود. بقیه‌ی چک‌ها همگی همزمان محاسبه می‌شوند و پنل هیچ‌وقت منتظر
 شبکه نمی‌ماند.
 

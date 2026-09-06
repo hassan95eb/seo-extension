@@ -5,7 +5,7 @@
 const fs = require("fs");
 const path = require("path");
 const { chromium } = require("playwright");
-const { start } = require("./server");
+const { start, HTML_ROBOTS_ROUTES, ERR_ROBOTS_ROUTES } = require("./server");
 
 const REPO = process.env.REPO || path.join(__dirname, "..");
 const read = (f) => fs.readFileSync(path.join(REPO, f), "utf8");
@@ -75,11 +75,12 @@ async function openPanel(page, url, lang) {
 }
 
 (async () => {
-  const server = await start(
-    fs.readFileSync(path.join(__dirname, "cert.pem")),
-    fs.readFileSync(path.join(__dirname, "key.pem")),
-    8443
-  );
+  const cert = fs.readFileSync(path.join(__dirname, "cert.pem"));
+  const key = fs.readFileSync(path.join(__dirname, "key.pem"));
+  const server = await start(cert, key, 8443);
+  // robots.txt lives at the origin, so the two degenerate responses need their own.
+  const htmlRobots = await start(cert, key, 8444, HTML_ROBOTS_ROUTES);
+  const errRobots = await start(cert, key, 8445, ERR_ROBOTS_ROUTES);
   const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined });
   const ctx = await browser.newContext({ ignoreHTTPSErrors: true, viewport: { width: 1280, height: 900 } });
   const page = await ctx.newPage();
@@ -93,6 +94,8 @@ async function openPanel(page, url, lang) {
   check("no header finding when no X-Robots-Tag", !codes(r).some((c) => c.startsWith("HDR_")));
   check("title reports pixels", find(r, "TITLE_OK") && find(r, "TITLE_OK").params.px > 0,
     find(r, "TITLE_OK") ? `${find(r, "TITLE_OK").params.n} chars / ${find(r, "TITLE_OK").params.px}px` : "");
+  check("no AI crawler blocked on an unrestricted URL", !!find(r, "AI_ROBOTS_OK"));
+  check("robots.txt findings cost a clean page nothing", r.score === 100);
 
   /* ---- 2. RTL defects ---- */
   console.log("\nrtl-broken.html");
@@ -130,6 +133,54 @@ async function openPanel(page, url, lang) {
   r = await auditPage(page, `${B}/headers-ok.html`, true);
   check("benign X-Robots-Tag passes", !!find(r, "HDR_ROBOTS_OK"));
   check("max-snippet:-1 is not read as a restriction", !find(r, "HDR_NOSNIPPET"));
+
+  /* ---- 3b. robots.txt: the AI crawler matrix ---- */
+  console.log("\nai-blocked.html");
+  const aiBefore = await auditPage(page, `${B}/ai-blocked.html`, false);
+  check("synchronous pass sees no robots.txt finding", !codes(aiBefore).some((c) => c.indexOf("AI_") === 0));
+  r = await auditPage(page, `${B}/ai-blocked.html`, true);
+  const search = find(r, "AI_SEARCH_BLOCKED");
+  check("blocked search crawlers are a warning", !!search && search.severity === "warning",
+    search ? search.params.bots : "nothing found");
+  check("multi-agent group applies to both agents in it",
+    !!search && search.params.bots.indexOf("OAI-SearchBot") > -1 && search.params.bots.indexOf("Claude-SearchBot") > -1,
+    search ? search.params.bots : "");
+  check("the matched rule is carried for the ticket", !!search && search.detailRaw.indexOf("Disallow: /ai-blocked.html") > -1,
+    search ? search.detailRaw : "");
+  const train = find(r, "AI_TRAIN_BLOCKED");
+  check("a wildcard rule matches (GPTBot: /ai-*)", !!train && train.params.bots === "GPTBot", train ? train.params.bots : "");
+  check("opting out of training costs no points", !!train && train.severity === "stat");
+  check("Google-Extended matched through its $ anchor", !!find(r, "AI_GEMINI_BLOCKED"));
+  check("Google-Extended is reported as neutral, not as a defect",
+    !!find(r, "AI_GEMINI_BLOCKED") && find(r, "AI_GEMINI_BLOCKED").severity === "stat");
+  check("no pass row once anything is blocked", !find(r, "AI_ROBOTS_OK"));
+  check("only the search block costs points", r.score === aiBefore.score - 4, `${aiBefore.score} → ${r.score}`);
+
+  console.log("\nprivate/page.html");
+  r = await auditPage(page, `${B}/private/page.html`, true);
+  const blocked = find(r, "ROBOTS_BLOCKS_PAGE");
+  check("a URL disallowed for Googlebot is an error", !!blocked && blocked.severity === "error",
+    blocked ? blocked.detailRaw : "nothing found");
+  check("an agent with no group of its own falls back to *",
+    !!find(r, "AI_SEARCH_BLOCKED") && find(r, "AI_SEARCH_BLOCKED").params.bots === "PerplexityBot",
+    find(r, "AI_SEARCH_BLOCKED") ? find(r, "AI_SEARCH_BLOCKED").params.bots : "");
+  check("an agent with its own group ignores * entirely",
+    !!find(r, "AI_SEARCH_BLOCKED") && find(r, "AI_SEARCH_BLOCKED").params.bots.indexOf("OAI-SearchBot") === -1);
+
+  console.log("\nprivate/public.html");
+  r = await auditPage(page, `${B}/private/public.html`, true);
+  check("a longer Allow beats the folder Disallow", !find(r, "ROBOTS_BLOCKS_PAGE"));
+  check("and the page reads as unblocked", !!find(r, "AI_ROBOTS_OK"));
+
+  console.log("\nrobots.txt served as HTML (:8444)");
+  r = await auditPage(page, "https://localhost:8444/page.html", true);
+  check("an HTML robots.txt is flagged", !!find(r, "ROBOTS_HTML"));
+  check("and no rule is invented from it", !codes(r).some((c) => c.indexOf("AI_") === 0));
+
+  console.log("\nrobots.txt returning 503 (:8445)");
+  r = await auditPage(page, "https://localhost:8445/page.html", true);
+  const r5 = find(r, "ROBOTS_5XX");
+  check("a 5xx robots.txt is a warning, not silence", !!r5 && r5.severity === "warning", r5 ? String(r5.params.n) : "");
 
   /* ---- 4. dead schema ---- */
   console.log("\nschema.html");
@@ -279,6 +330,8 @@ async function openPanel(page, url, lang) {
 
   await browser.close();
   server.close();
+  htmlRobots.close();
+  errRobots.close();
   console.log(`\n${failures ? failures + " FAILURES" : "all checks passed"}`);
   process.exit(failures ? 1 : 0);
 })().catch((e) => { console.error(e); process.exit(1); });

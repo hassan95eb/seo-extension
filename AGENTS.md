@@ -127,6 +127,12 @@ file as modified.
 
 ## Current state
 
+- **v2.4.0** shipped: gap-analysis item 2c, the AI crawler robots.txt matrix. `/robots.txt` is
+  fetched in parallel with the header request and parsed properly (groups, `*` fallback,
+  longest-match with Allow winning ties, `*`/`$`, 500 KiB cap). Blocked **search** crawlers are
+  a warning; blocked **training** crawlers and `Google-Extended` are `stat`, because opting out
+  of training is a legitimate choice and must not cost points. A URL disallowed for Googlebot,
+  an HTML `/robots.txt` and a 5xx `/robots.txt` are reported too. New `ai` category.
 - **v2.3.1**: fixed the export menu, which rendered permanently open because
   `.sl-menu{display:flex}` outranks the UA sheet's `[hidden]{display:none}`. Any element
   in `PANEL_CSS` that sets `display` and is also hidden by attribute needs its own
@@ -150,14 +156,14 @@ file as modified.
 ## What's next
 
 `docs/gap-analysis.md` holds the researched, prioritised list, based on reading the source of
-ten competing extensions. Items 1, 3, 4 and 5 are done. What remains, in order:
+ten competing extensions. Items 1, 3, 4, 5, 2a and 2c are done. What remains, in order:
 
-1. **AI visibility (documented parts only)** — gap-analysis item 2. `nosnippet`/`max-snippet`
-   is already handled by the header pass; what is left is 2b, the raw-HTML vs rendered-DOM
-   diff (AI crawlers do not execute JavaScript, so a JS-heavy page can rank in Google and be
-   invisible to ChatGPT and Perplexity), and 2c, the `GPTBot` vs `OAI-SearchBot` robots.txt
-   distinction. **`auditHeaders()` already performs the fetch 2b needs** — switch its GET
-   fallback to always read `response.text()` and diff it against the DOM.
+1. **Raw HTML vs rendered DOM** — gap-analysis item 2b, the last open part of item 2. AI
+   crawlers do not execute JavaScript, so a JS-heavy page can rank in Google and be invisible
+   to ChatGPT and Perplexity; the same diff catches `noindex` present in the raw HTML and
+   removed by JavaScript, which no DOM-based tool can see. **`auditHeaders()` already performs
+   the fetch this needs** — switch its GET fallback to always read `response.text()` and diff
+   it against the DOM.
 2. **Image weight and LCP** — gap-analysis item 8, and read 8h before writing code: it lists
    the places the plan and the codebase disagree. P0 is DOM-only and needs no permission
    change. The images CSV gains a weight column for free once it exists.
@@ -195,5 +201,11 @@ Search ignores llms.txt and that no special schema is needed for AI features.
   document and does not need a 400-row link table.
 - **The findings CSV is one row per element, not per finding.** Joining selectors into a single
   cell is the same mistake v2.2.1 spent a release removing from the panel.
+- **Blocking a training crawler is a `stat`, not a finding.** `GPTBot`, `ClaudeBot` and
+  `Google-Extended` are deliberate policy choices that a site is entitled to make, so costing
+  them points would be a false accusation — the value is in saying what they do *not* do
+  (they do not remove the page from AI answers; `Google-Extended` does not touch AI Overviews).
+  Only the **search** crawlers — `OAI-SearchBot`, `Claude-SearchBot`, `PerplexityBot` — cost
+  anything, because blocking those is the mistake people make by accident.
 - **Ambiguous retired types are `info`, not `warning`.** `Course` and `LearningResource` still
   have non-rich-result uses, so they sit in `DEPRECATED`; only unambiguous ones cost 4 points.

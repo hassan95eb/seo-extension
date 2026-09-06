@@ -726,6 +726,169 @@
     return out;
   }
 
+  /* ---------- robots.txt — the AI crawler matrix ----------
+   * A genuinely common and expensive misconfiguration: sites blanket-blocked "OpenAI"
+   * or "Anthropic" in 2023-24 and killed their ChatGPT and Claude *search citations*
+   * while believing they had only opted out of training. The bots are separate, they
+   * are documented by the vendors themselves, and no competing extension reads them.
+   *
+   * Same-origin `fetch`, so this needs no permission the header pass did not already use.
+   */
+
+  // Google stops reading robots.txt at 500 KiB. Parsing past that would report rules
+  // that the crawler this check is talking about never sees.
+  const ROBOTS_MAX_BYTES = 500 * 1024;
+
+  // `kind` is what blocking the bot actually costs — the distinction this check exists
+  // for. Names are vendor identifiers, not display strings: i18n.js still owns every
+  // sentence they appear in.
+  const AI_BOTS = [
+    { ua: "oai-searchbot", name: "OAI-SearchBot", kind: "search" },
+    { ua: "claude-searchbot", name: "Claude-SearchBot", kind: "search" },
+    { ua: "perplexitybot", name: "PerplexityBot", kind: "search" },
+    { ua: "gptbot", name: "GPTBot", kind: "train" },
+    { ua: "claudebot", name: "ClaudeBot", kind: "train" },
+    { ua: "google-extended", name: "Google-Extended", kind: "gemini" }
+  ];
+
+  // Consecutive `User-agent:` lines share one group; the first Allow/Disallow closes the
+  // agent list. Anything that is not a rule (Sitemap, Crawl-delay, junk) is skipped.
+  function parseRobots(text) {
+    const groups = [];
+    let cur = null, openAgents = false;
+    String(text || "").split(/\r?\n/).forEach((raw) => {
+      const line = raw.split("#")[0].trim();
+      if (!line) return;
+      const m = line.match(/^([A-Za-z-]+)\s*:\s*(.*)$/);
+      if (!m) return;
+      const field = m[1].toLowerCase();
+      const value = m[2].trim();
+      if (field === "user-agent") {
+        if (!openAgents || !cur) { cur = { agents: [], rules: [] }; groups.push(cur); openAgents = true; }
+        cur.agents.push(value.toLowerCase());
+        return;
+      }
+      if (field !== "allow" && field !== "disallow") return;
+      if (!cur) return;
+      openAgents = false;
+      cur.rules.push({ allow: field === "allow", path: value });
+    });
+    return groups;
+  }
+
+  // `*` matches any sequence, `$` anchors the end; everything else is literal.
+  function robotsRuleMatches(pattern, path) {
+    let p = String(pattern);
+    let anchored = false;
+    if (p.charAt(p.length - 1) === "$") { anchored = true; p = p.slice(0, -1); }
+    let re = "";
+    for (let i = 0; i < p.length; i++) {
+      const ch = p.charAt(i);
+      re += ch === "*" ? "[\\s\\S]*" : ch.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    }
+    try { return new RegExp("^" + re + (anchored ? "$" : "")).test(path); }
+    catch (e) { return false; }
+  }
+
+  // A named group wins outright over `*`, and within a group the longest matching rule
+  // wins with Allow taking the tie — RFC 9309, and what Google actually implements.
+  function robotsVerdict(groups, ua, path) {
+    let group = null;
+    for (let i = 0; i < groups.length && !group; i++) {
+      if (groups[i].agents.indexOf(ua) !== -1) group = groups[i];
+    }
+    for (let i = 0; i < groups.length && !group; i++) {
+      if (groups[i].agents.indexOf("*") !== -1) group = groups[i];
+    }
+    if (!group) return { blocked: false, rule: "" };
+    let best = null;
+    group.rules.forEach((r) => {
+      // `Disallow:` with an empty value means "allow everything" — it is not a rule.
+      if (!r.path) return;
+      if (!robotsRuleMatches(r.path, path)) return;
+      if (!best || r.path.length > best.path.length ||
+          (r.path.length === best.path.length && r.allow)) best = r;
+    });
+    if (!best) return { blocked: false, rule: "" };
+    return { blocked: !best.allow, rule: (best.allow ? "Allow: " : "Disallow: ") + best.path };
+  }
+
+  async function auditRobots(add) {
+    let res;
+    try {
+      res = await fetch(new URL("/robots.txt", location.origin).href, {
+        credentials: "omit", redirect: "follow", cache: "no-store"
+      });
+    } catch (e) { return; }
+    if (!res) return;
+    // 5xx is not "no rules": Google treats a failing robots.txt as a full disallow for
+    // the whole host until it recovers, which is a far bigger problem than the file's
+    // contents. 4xx genuinely means no rules, and nothing is blocked.
+    if (res.status >= 500) {
+      add({ severity: SEV.WARN, cat: "index", code: "ROBOTS_5XX", params: { n: res.status } });
+      return;
+    }
+    if (!res.ok) return;
+
+    let text = "";
+    try { text = await res.text(); } catch (e) { return; }
+    text = text.slice(0, ROBOTS_MAX_BYTES);
+
+    // A catch-all route answering /robots.txt with the site's HTML shell is common on
+    // SPA hosting, and it means every directive in the file the owner thinks they have
+    // is being ignored.
+    const ctype = (res.headers.get("content-type") || "").toLowerCase();
+    if (ctype.indexOf("html") !== -1 || /^\s*</.test(text)) {
+      add({ severity: SEV.INFO, cat: "index", code: "ROBOTS_HTML", detailRaw: txt(text).slice(0, 90) });
+      return;
+    }
+
+    const groups = parseRobots(text);
+    const path = location.pathname + location.search;
+
+    // Googlebot first: a URL disallowed here is never crawled at all, so a `noindex` on
+    // it is never read either. That outranks anything the AI matrix has to say.
+    const goog = robotsVerdict(groups, "googlebot", path);
+    if (goog.blocked) {
+      add({ severity: SEV.ERROR, cat: "index", code: "ROBOTS_BLOCKS_PAGE", detailRaw: goog.rule });
+    }
+
+    // Each finding carries only the rules behind it: a ticket about blocked search
+    // crawlers should not arrive with the training crawler's rule pasted into it.
+    const hit = { search: [], train: [], gemini: [] };
+    const rules = { search: [], train: [], gemini: [] };
+    AI_BOTS.forEach((bot) => {
+      const v = robotsVerdict(groups, bot.ua, path);
+      if (!v.blocked) return;
+      hit[bot.kind].push(bot.name);
+      rules[bot.kind].push(bot.name + " → " + v.rule);
+    });
+
+    if (hit.search.length) {
+      add({
+        severity: SEV.WARN, cat: "ai", code: "AI_SEARCH_BLOCKED",
+        params: { bots: hit.search.join(", "), n: hit.search.length },
+        detailRaw: rules.search.join(" · ")
+      });
+    }
+    // Opting out of training is a legitimate, deliberate policy choice, so it is a
+    // measurement and not a defect: it must not cost a page any points. What it is
+    // worth saying is that it does *not* remove the page from AI search answers.
+    if (hit.train.length) {
+      add({
+        severity: SEV.STAT, cat: "ai", code: "AI_TRAIN_BLOCKED",
+        params: { bots: hit.train.join(", "), n: hit.train.length },
+        detailRaw: rules.train.join(" · ")
+      });
+    }
+    if (hit.gemini.length) {
+      add({ severity: SEV.STAT, cat: "ai", code: "AI_GEMINI_BLOCKED", detailRaw: rules.gemini.join(" · ") });
+    }
+    if (!hit.search.length && !hit.train.length && !hit.gemini.length && !goog.blocked) {
+      add({ severity: SEV.PASS, cat: "ai", code: "AI_ROBOTS_OK" });
+    }
+  }
+
   async function fetchHeaders(url) {
     const opts = { credentials: "include", redirect: "follow", cache: "no-store" };
     try {
@@ -737,16 +900,20 @@
 
   async function auditHeaders(report) {
     if (!/^https?:$/.test(location.protocol)) return report;
-    let res;
-    try { res = await fetchHeaders(location.href); }
-    catch (e) { return report; }
-    if (!res || !res.headers) return report;
 
     const issues = report.issues;
     let idc = issues.length;
     const add = (o) => issues.push(Object.assign(
       { id: "h" + ++idc, els: [], params: {}, detailRaw: "" }, o
     ));
+
+    // Two independent same-origin requests, in flight together: the page's own response
+    // headers, and /robots.txt. Neither failing may stop the other being reported.
+    const [res] = await Promise.all([
+      fetchHeaders(location.href).catch(() => null),
+      auditRobots(add).catch(() => {})
+    ]);
+    if (!res || !res.headers) return finalize(report);
 
     const xr = res.headers.get("x-robots-tag");
     if (xr) {

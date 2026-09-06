@@ -125,6 +125,7 @@
       catperf: "پرفورمنس",
       catlinks: "لینک‌ها",
       catindex: "ایندکس",
+      catai: "دیده‌شدن در هوش مصنوعی",
       catsocial: "شبکه‌های اجتماعی",
       catsd: "داده ساختاریافته",
       cattech: "فنی",
@@ -246,6 +247,7 @@
       catperf: "Performance",
       catlinks: "Links",
       catindex: "Indexability",
+      catai: "AI visibility",
       catsocial: "Social",
       catsd: "Structured data",
       cattech: "Technical",
@@ -671,6 +673,84 @@
         t: "Canonical is declared only in the HTTP header",
         d: "Valid, but invisible in the page source and easy to lose track of.",
         f: "Mirror the same URL in <head> for clarity."
+      }
+    },
+
+    /* --- robots.txt: page-level crawling and the AI crawler matrix --- */
+    ROBOTS_BLOCKS_PAGE: {
+      fa: {
+        t: "این آدرس در robots.txt بلاک شده است",
+        d: "گوگل‌بات اجازه گرفتن این آدرس را ندارد، پس صفحه اصلاً کراول نمی‌شود — و در نتیجه اگر داخل صفحه noindex هم گذاشته باشی هیچ‌وقت خوانده نمی‌شود. یک آدرس بلاک‌شده باز هم می‌تواند به‌صورت لینک خالی و بدون عنوان و توضیحات در نتایج ظاهر شود.",
+        f: "قانون Disallow مربوطه را از robots.txt بردار یا محدودترش کن. اگر هدفت خارج کردن صفحه از نتایج است، مسیر درست باز گذاشتن کراول و گذاشتن noindex است، نه بلاک کردن در robots.txt."
+      },
+      en: {
+        t: "This URL is disallowed in robots.txt",
+        d: "Googlebot may not fetch this URL, so the page is never crawled — which also means a noindex on it is never read. A blocked URL can still surface in results as a bare link with no title or description.",
+        f: "Remove or narrow the matching Disallow rule. If the goal is to keep the page out of results, allow crawling and use noindex instead — robots.txt cannot do that job."
+      }
+    },
+    AI_SEARCH_BLOCKED: {
+      fa: {
+        t: "‏{bots}: بلاک شده — این صفحه در پاسخ‌های هوش مصنوعی نقل نمی‌شود",
+        d: "این ربات‌ها ربات‌های «جستجو» هستند، نه آموزش مدل. بلاک کردنشان یعنی صفحه از ارجاعات ChatGPT، Claude یا Perplexity حذف می‌شود. خیلی از سایت‌ها این را ناخواسته انجام داده‌اند، چون فکر می‌کردند فقط جلوی استفاده از محتوا برای آموزش مدل را می‌گیرند.",
+        f: "اگر می‌خواهی از این پاسخ‌ها ترافیک بگیری، همین ربات‌ها را در robots.txt آزاد کن؛ ربات‌های آموزش (GPTBot و ClaudeBot) جدا هستند و می‌توانند بلاک بمانند."
+      },
+      en: {
+        t: "{bots}: blocked — this page cannot be cited in AI answers",
+        d: "These are the vendors' *search* crawlers, not their training crawlers. Blocking them removes the page from ChatGPT, Claude and Perplexity citations. Many sites did this by accident, believing they were only opting out of model training.",
+        f: "Allow these agents in robots.txt if you want traffic from AI answers. The training crawlers (GPTBot, ClaudeBot) are separate and can stay blocked."
+      }
+    },
+    AI_TRAIN_BLOCKED: {
+      fa: {
+        t: "‏{bots}: بلاک شده (فقط آموزش مدل)",
+        d: "این یک انتخاب کاملاً معتبر است و امتیازی از صفحه کم نمی‌کند. فقط بدان که این ربات‌ها فقط برای آموزش مدل هستند: بلاک کردنشان صفحه را از پاسخ‌ها و ارجاعات هوش مصنوعی حذف نمی‌کند و آن کار برعهده ربات‌های جستجوی جداگانه است.",
+        f: ""
+      },
+      en: {
+        t: "{bots}: blocked (model training only)",
+        d: "A perfectly valid choice, and it costs the page nothing here. Worth knowing that these agents only feed model training: blocking them does not remove the page from AI answers or citations — separate search crawlers do that.",
+        f: ""
+      }
+    },
+    AI_GEMINI_BLOCKED: {
+      fa: {
+        t: "‏Google-Extended بلاک شده — روی AI Overviews اثری ندارد",
+        d: "این پرتکرارترین باور غلط در این حوزه است. طبق مستندات خود گوگل، Google-Extended فقط آموزش و grounding مدل‌های Gemini را کنترل می‌کند و «روی حضور سایت در جستجوی گوگل اثر ندارد و سیگنال رتبه‌بندی هم نیست». برای بیرون ماندن از AI Overviews باید nosnippet بگذاری، نه این را.",
+        f: ""
+      },
+      en: {
+        t: "Google-Extended is blocked — this does not affect AI Overviews",
+        d: "The most common myth in this area. Per Google's own documentation, Google-Extended controls only Gemini training and grounding and \"does not impact a site's inclusion in Google Search nor is it used as a ranking signal\". Staying out of AI Overviews is what nosnippet does, not this.",
+        f: ""
+      }
+    },
+    AI_ROBOTS_OK: {
+      fa: { t: "هیچ خزنده هوش مصنوعی‌ای برای این آدرس بلاک نشده", d: "", f: "" },
+      en: { t: "No AI crawler is blocked for this URL", d: "", f: "" }
+    },
+    ROBOTS_HTML: {
+      fa: {
+        t: "‏robots.txt به‌جای متن، HTML برمی‌گرداند",
+        d: "مسیر /robots.txt دارد صفحه سایت را برمی‌گرداند (معمولاً به‌خاطر روت catch-all در اپ‌های تک‌صفحه‌ای). یعنی هیچ‌کدام از قوانینی که فکر می‌کنی داری خوانده نمی‌شود.",
+        f: "‏/robots.txt را به‌صورت فایل متنی واقعی با Content-Type: text/plain سرو کن."
+      },
+      en: {
+        t: "robots.txt returns HTML instead of text",
+        d: "The /robots.txt path is serving the site's own page, usually a catch-all route in a single-page app. Whatever rules you think you have are not being read by anyone.",
+        f: "Serve /robots.txt as a real text file with Content-Type: text/plain."
+      }
+    },
+    ROBOTS_5XX: {
+      fa: {
+        t: "‏robots.txt با خطای {n} پاسخ می‌دهد",
+        d: "خطای سرور روی robots.txt مثل نبودن فایل رفتار نمی‌شود: خزنده‌ها آن را «همه‌چیز ممنوع» تفسیر می‌کنند و کراول کل دامنه تا زمان درست شدنش متوقف می‌ماند.",
+        f: "همین حالا درستش کن. اگر فایلی نداری، بهتر است سرور برای این مسیر ۴۰۴ برگرداند تا ۵xx."
+      },
+      en: {
+        t: "robots.txt responds with a {n} error",
+        d: "A server error on robots.txt is not treated as an absent file: crawlers read it as a full disallow and stop crawling the whole host until it recovers.",
+        f: "Fix it now. If you have no robots.txt, a 404 on that path is safe — a 5xx is not."
       }
     },
 

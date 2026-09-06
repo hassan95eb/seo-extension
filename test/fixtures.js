@@ -148,4 +148,27 @@ const ASSETS = `<!DOCTYPE html>
 </body>
 </html>`;
 
-module.exports = { CLEAN, RTL_BROKEN, RTL_GOOD, SCHEMA, HEADERS, ASSETS };
+// One robots.txt for the whole fixture origin, so every rule is path-scoped: clean.html
+// has to stay genuinely unblocked (it is the page that must score 100) while the AI
+// matrix, the `*` fallback, wildcards, the `$` anchor, multi-agent groups and an Allow
+// that overrides a longer folder Disallow all still get exercised.
+const ROBOTS_TXT = `# SEO Lens verification fixture
+User-agent: *
+Disallow: /private/
+Allow: /private/public.html
+
+User-agent: OAI-SearchBot
+User-agent: Claude-SearchBot
+Disallow: /ai-blocked.html
+
+User-agent: GPTBot
+Disallow: /ai-*
+
+User-agent: Google-Extended
+Disallow: /ai-blocked.html$
+
+Sitemap: https://localhost:8443/sitemap.xml
+Crawl-delay: 5
+`;
+
+module.exports = { CLEAN, RTL_BROKEN, RTL_GOOD, SCHEMA, HEADERS, ASSETS, ROBOTS_TXT };
