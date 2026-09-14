@@ -691,11 +691,11 @@
     return report;
   }
 
-  /* ---------- HTTP header pass ----------
+  /* ---------- Raw HTML + HTTP header pass ----------
    * `noindex` delivered as an X-Robots-Tag header never appears in the DOM, so every
-   * DOM-only auditor reports the page as perfectly fine while it is deindexed. One
-   * same-origin request gets it. HEAD first because it costs no body; a GET fallback
-   * covers servers that reject HEAD.
+   * DOM-only auditor reports the page as perfectly fine while it is deindexed. The same
+   * GET also supplies the raw HTML: AI crawlers do not execute JavaScript, so comparing
+   * that response with the rendered DOM exposes content they cannot see.
    *
    * Runs after run() rather than inside it: the panel paints immediately from the
    * synchronous audit and these findings are merged in when the response lands.
@@ -724,6 +724,134 @@
       if (ua) out.unavailable = ua[1].trim();
     });
     return out;
+  }
+
+  function comparableText(doc) {
+    if (!doc || !doc.body) return "";
+    let root;
+    try { root = doc.body.cloneNode(true); } catch (e) { return ""; }
+    root.querySelectorAll("script,style,noscript,template,svg").forEach((el) => el.remove());
+    return txt(root.textContent);
+  }
+
+  function words(value) {
+    const normalized = normalizeDigits(String(value || "")).toLocaleLowerCase();
+    try { return normalized.match(/[\p{L}\p{N}]+/gu) || []; }
+    catch (e) { return normalized.split(/\s+/).filter(Boolean); }
+  }
+
+  // Multiset coverage, not just a word-count ratio: replacing server-rendered prose with
+  // the same number of unrelated client-rendered words must not report 100% coverage.
+  function rawCoverage(rawText, renderedText) {
+    const rawWords = words(rawText);
+    const renderedWords = words(renderedText);
+    if (!renderedWords.length) return { pct: 100, raw: rawWords.length, rendered: 0 };
+    const available = new Map();
+    rawWords.forEach((word) => available.set(word, (available.get(word) || 0) + 1));
+    let matched = 0;
+    renderedWords.forEach((word) => {
+      const left = available.get(word) || 0;
+      if (!left) return;
+      matched++;
+      available.set(word, left - 1);
+    });
+    return {
+      pct: Math.round(matched * 100 / renderedWords.length),
+      raw: rawWords.length,
+      rendered: renderedWords.length
+    };
+  }
+
+  function metaRobots(doc) {
+    if (!doc || !doc.querySelectorAll) return "";
+    return Array.from(doc.querySelectorAll('meta[name="robots" i],meta[name="googlebot" i]'))
+      .map((el) => txt(el.getAttribute("content")).toLowerCase())
+      .filter(Boolean).sort().join(" | ");
+  }
+
+  function canonicalUrl(doc) {
+    if (!doc || !doc.querySelector) return "";
+    const el = doc.querySelector('link[rel="canonical" i]');
+    const value = el ? txt(el.getAttribute("href")) : "";
+    if (!value) return "";
+    try { return new URL(value, location.href).href; } catch (e) { return value; }
+  }
+
+  function jsonLdBlocks(doc) {
+    if (!doc || !doc.querySelectorAll) return [];
+    return Array.from(doc.querySelectorAll('script[type="application/ld+json" i]'))
+      .map((el) => txt(el.textContent)).filter(Boolean);
+  }
+
+  function auditRawDom(add, html) {
+    let raw;
+    try { raw = new DOMParser().parseFromString(html, "text/html"); }
+    catch (e) { return; }
+    if (!raw || !raw.documentElement) return;
+
+    // `innerText` keeps the rendered side to what a user can actually see. The detached
+    // raw document has no layout, so its conservative equivalent is cleaned textContent.
+    const renderedText = document.body ? txt(document.body.innerText) : "";
+    const coverage = rawCoverage(comparableText(raw), renderedText);
+    const coverageParams = { n: coverage.pct, raw: coverage.raw, rendered: coverage.rendered };
+    if (coverage.pct < 50 && coverage.rendered >= 30) {
+      add({ severity: SEV.WARN, cat: "ai", code: "RAW_CONTENT_LOW", params: coverageParams });
+    } else if (coverage.pct < 90 && coverage.rendered >= 30) {
+      add({ severity: SEV.STAT, cat: "ai", code: "RAW_CONTENT_PARTIAL", params: coverageParams });
+    } else {
+      add({ severity: SEV.PASS, cat: "ai", code: "RAW_CONTENT_OK", params: coverageParams });
+    }
+
+    const rawH1 = raw.querySelectorAll("h1").length;
+    const renderedH1 = document.querySelectorAll("h1").length;
+    if (rawH1 < renderedH1) {
+      add({ severity: SEV.WARN, cat: "ai", code: "RAW_H1_MISSING", params: { raw: rawH1, rendered: renderedH1 } });
+    }
+    const rawH2 = raw.querySelectorAll("h2").length;
+    const renderedH2 = document.querySelectorAll("h2").length;
+    if (rawH2 < renderedH2) {
+      add({ severity: SEV.INFO, cat: "ai", code: "RAW_H2_MISSING", params: { raw: rawH2, rendered: renderedH2 } });
+    }
+
+    const rawJson = jsonLdBlocks(raw);
+    const renderedJson = jsonLdBlocks(document);
+    const missingJson = renderedJson.filter((block) => rawJson.indexOf(block) === -1).length;
+    if (missingJson) {
+      add({ severity: SEV.INFO, cat: "ai", code: "RAW_JSONLD_MISSING", params: { n: missingJson } });
+    }
+
+    const rawTitle = txt(raw.title);
+    const renderedTitle = txt(document.title);
+    if (!rawTitle && renderedTitle) {
+      add({ severity: SEV.WARN, cat: "ai", code: "RAW_TITLE_MISSING", detailRaw: renderedTitle });
+    } else if (rawTitle && renderedTitle && rawTitle !== renderedTitle) {
+      add({ severity: SEV.INFO, cat: "ai", code: "RAW_TITLE_CHANGED", params: { raw: rawTitle, rendered: renderedTitle } });
+    }
+
+    const rawCanon = canonicalUrl(raw);
+    const renderedCanon = canonicalUrl(document);
+    if (!rawCanon && renderedCanon) {
+      add({ severity: SEV.WARN, cat: "index", code: "RAW_CANON_MISSING", detailRaw: renderedCanon });
+    } else if (rawCanon && renderedCanon && rawCanon !== renderedCanon) {
+      add({ severity: SEV.WARN, cat: "index", code: "RAW_CANON_CHANGED", params: { raw: rawCanon, rendered: renderedCanon } });
+    }
+
+    const rawRules = metaRobots(raw);
+    const renderedRules = metaRobots(document);
+    const rawNoindex = /(^|[|,;\s])noindex([|,;\s]|$)/.test(rawRules);
+    const renderedNoindex = /(^|[|,;\s])noindex([|,;\s]|$)/.test(renderedRules);
+    if (rawNoindex && !renderedNoindex) {
+      add({ severity: SEV.ERROR, cat: "index", code: "RAW_NOINDEX_REMOVED", detailRaw: rawRules });
+    } else if (!rawRules && renderedRules) {
+      add({ severity: SEV.INFO, cat: "index", code: "RAW_ROBOTS_ADDED", detailRaw: renderedRules });
+    } else if (rawRules && !renderedRules) {
+      add({ severity: SEV.INFO, cat: "index", code: "RAW_ROBOTS_REMOVED", detailRaw: rawRules });
+    } else if (rawRules !== renderedRules) {
+      add({
+        severity: SEV.INFO, cat: "index", code: "RAW_ROBOTS_CHANGED",
+        params: { raw: rawRules, rendered: renderedRules }
+      });
+    }
   }
 
   /* ---------- robots.txt — the AI crawler matrix ----------
@@ -889,13 +1017,14 @@
     }
   }
 
-  async function fetchHeaders(url) {
+  async function fetchPage(url) {
     const opts = { credentials: "include", redirect: "follow", cache: "no-store" };
-    try {
-      const head = await fetch(url, Object.assign({ method: "HEAD" }, opts));
-      if (head.ok || head.status === 304) return head;
-    } catch (e) { /* fall through to GET */ }
-    return fetch(url, Object.assign({ method: "GET" }, opts));
+    const res = await fetch(url, Object.assign({ method: "GET" }, opts));
+    let html = null;
+    if (res.ok) {
+      try { html = await res.text(); } catch (e) { /* headers still remain useful */ }
+    }
+    return { res, html };
   }
 
   async function auditHeaders(report) {
@@ -909,11 +1038,14 @@
 
     // Two independent same-origin requests, in flight together: the page's own response
     // headers, and /robots.txt. Neither failing may stop the other being reported.
-    const [res] = await Promise.all([
-      fetchHeaders(location.href).catch(() => null),
+    const [pageResult] = await Promise.all([
+      fetchPage(location.href).catch(() => null),
       auditRobots(add).catch(() => {})
     ]);
+    const res = pageResult && pageResult.res;
     if (!res || !res.headers) return finalize(report);
+
+    if (typeof pageResult.html === "string") auditRawDom(add, pageResult.html);
 
     const xr = res.headers.get("x-robots-tag");
     if (xr) {

@@ -27,6 +27,10 @@ const ROUTES = {
       Link: '<https://localhost:8443/somewhere-else.html>; rel="canonical"'
     }
   },
+  "/raw-js-only.html": { body: F.RAW_JS_ONLY, headers: {} },
+  "/raw-partial.html": { body: F.RAW_PARTIAL, headers: {} },
+  "/raw-robots-removed.html": { body: F.RAW_ROBOTS_REMOVED, headers: {} },
+  "/raw-robots-changed.html": { body: F.RAW_ROBOTS_CHANGED, headers: {} },
   // Same headers, but scoped to a bot we do not report on: must produce nothing.
   "/headers-otherbot.html": {
     body: F.HEADERS,

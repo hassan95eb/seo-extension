@@ -96,6 +96,8 @@ async function openPanel(page, url, lang) {
     find(r, "TITLE_OK") ? `${find(r, "TITLE_OK").params.n} chars / ${find(r, "TITLE_OK").params.px}px` : "");
   check("no AI crawler blocked on an unrestricted URL", !!find(r, "AI_ROBOTS_OK"));
   check("robots.txt findings cost a clean page nothing", r.score === 100);
+  check("clean raw HTML has full rendered-content coverage", !!find(r, "RAW_CONTENT_OK") && find(r, "RAW_CONTENT_OK").params.n >= 90,
+    find(r, "RAW_CONTENT_OK") ? `${find(r, "RAW_CONTENT_OK").params.n}%` : "nothing found");
 
   /* ---- 2. RTL defects ---- */
   console.log("\nrtl-broken.html");
@@ -133,6 +135,40 @@ async function openPanel(page, url, lang) {
   r = await auditPage(page, `${B}/headers-ok.html`, true);
   check("benign X-Robots-Tag passes", !!find(r, "HDR_ROBOTS_OK"));
   check("max-snippet:-1 is not read as a restriction", !find(r, "HDR_NOSNIPPET"));
+
+  /* ---- 3a. raw HTML versus rendered DOM ---- */
+  console.log("\nraw-js-only.html");
+  const rawBefore = await auditPage(page, `${B}/raw-js-only.html`, false);
+  check("synchronous first paint has no raw-HTML finding", !codes(rawBefore).some((c) => c.indexOf("RAW_") === 0));
+  r = await auditPage(page, `${B}/raw-js-only.html`, true);
+  const lowCoverage = find(r, "RAW_CONTENT_LOW");
+  check("a client-rendered shell has low raw coverage", !!lowCoverage && lowCoverage.params.n < 50,
+    lowCoverage ? `${lowCoverage.params.n}%` : "nothing found");
+  check("low raw coverage is a warning", !!lowCoverage && lowCoverage.severity === "warning");
+  check("an H1 created by JavaScript is reported", !!find(r, "RAW_H1_MISSING"));
+  check("H2 headings created by JavaScript are reported", !!find(r, "RAW_H2_MISSING"));
+  check("JSON-LD created by JavaScript is reported", !!find(r, "RAW_JSONLD_MISSING"));
+  check("a JavaScript-replaced title is reported", !!find(r, "RAW_TITLE_CHANGED"));
+  check("a JavaScript-added canonical is reported", !!find(r, "RAW_CANON_MISSING"));
+  check("raw noindex removed by JavaScript is an error",
+    !!find(r, "RAW_NOINDEX_REMOVED") && find(r, "RAW_NOINDEX_REMOVED").severity === "error");
+  check("raw findings are merged only by the async pass", r.score < rawBefore.score, `${rawBefore.score} → ${r.score}`);
+
+  console.log("\nraw-partial.html");
+  r = await auditPage(page, `${B}/raw-partial.html`, true);
+  const partialCoverage = find(r, "RAW_CONTENT_PARTIAL");
+  check("partial raw coverage is reported as a neutral measurement",
+    !!partialCoverage && partialCoverage.severity === "stat" && partialCoverage.params.n >= 50 && partialCoverage.params.n < 90,
+    partialCoverage ? `${partialCoverage.params.n}%` : "nothing found");
+  check("a title absent from raw HTML is reported", !!find(r, "RAW_TITLE_MISSING"));
+  check("a canonical changed by JavaScript is reported", !!find(r, "RAW_CANON_CHANGED"));
+  check("robots directives added by JavaScript are reported", !!find(r, "RAW_ROBOTS_ADDED"));
+
+  console.log("\nraw robots variants");
+  r = await auditPage(page, `${B}/raw-robots-removed.html`, true);
+  check("robots directives removed by JavaScript are reported", !!find(r, "RAW_ROBOTS_REMOVED"));
+  r = await auditPage(page, `${B}/raw-robots-changed.html`, true);
+  check("robots directives replaced by JavaScript are reported", !!find(r, "RAW_ROBOTS_CHANGED"));
 
   /* ---- 3b. robots.txt: the AI crawler matrix ---- */
   console.log("\nai-blocked.html");

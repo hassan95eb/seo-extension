@@ -186,8 +186,8 @@
     pushScore();
   }
 
-  // The header checks need a network round-trip, so they run after the panel has already
-  // painted the synchronous findings. `token` guards against a re-scan landing out of order.
+  // Raw-HTML and header checks need a network round-trip, so they run after the panel has
+  // already painted the synchronous findings. `token` guards against a re-scan landing out of order.
   let auditToken = 0;
   function runHeaderAudit() {
     if (!report || !window.__SEO_LENS_AUDIT_HEADERS__) return;

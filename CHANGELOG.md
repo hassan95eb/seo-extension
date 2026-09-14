@@ -1,5 +1,35 @@
 # Changelog
 
+## v2.5.0
+
+Gap-analysis item 2b: raw HTML versus the rendered DOM. SEO Lens now shows what a crawler
+that does not execute JavaScript can actually receive, using the same same-origin page request
+that already reads response headers.
+
+### The invisible client-rendering gap
+
+- Reports raw-HTML coverage as a real multiset word comparison rather than a simple ratio, so
+  replacing server text with the same number of unrelated client-rendered words cannot produce
+  a false 100%. Below 50% is a warning, 50–89% is a neutral stat, and 90% or more passes.
+- Compares H1/H2 presence, JSON-LD blocks, title, canonical and robots meta directives between
+  the fetched HTML and the live DOM.
+- **`RAW_NOINDEX_REMOVED`** is an error: Google may stop before rendering when it encounters
+  `noindex` in the initial response, so removing that directive with JavaScript may never make
+  the page indexable.
+- Distinguishes robots directives added, removed or replaced by JavaScript, with separate
+  localized message codes instead of assembling display text in the engine.
+
+### Architecture and verification
+
+- The synchronous first paint is unchanged. Raw-HTML findings arrive through the existing
+  `__SEO_LENS_AUDIT_HEADERS__` async pass and trigger the same score/count/order recomputation.
+- The former HEAD-first request is now one GET whose headers and body are read together. The
+  robots.txt request remains independent and parallel; neither failure can suppress the other.
+- No host permission, static content script or external service was added. All wording lives in
+  `i18n.js` in Persian and English, and extracted values still pass through bidi isolation.
+- The HTTPS harness adds an empty client shell, a partially rendered page, and each robots-meta
+  mutation variant. All existing checks pass and the clean fixture still scores exactly 100.
+
 ## v2.4.0
 
 Gap-analysis item 2c: the AI crawler robots.txt matrix. The engine now reads the site's own

@@ -676,6 +676,168 @@
       }
     },
 
+    /* --- raw HTML versus rendered DOM --- */
+    RAW_CONTENT_LOW: {
+      fa: {
+        t: "فقط {n}٪ از محتوای رندرشده در HTML خام وجود دارد",
+        d: "HTML خام {raw} کلمه و DOM رندرشده {rendered} کلمه دارد. خزنده‌های اصلی هوش مصنوعی JavaScript اجرا نمی‌کنند، پس بخش بزرگی از محتوایی که کاربر می‌بیند برای آن‌ها در دسترس نیست.",
+        f: "محتوای اصلی صفحه را در پاسخ اولیه سرور رندر کن؛ برای این بخش به رندر سمت کاربر وابسته نباش."
+      },
+      en: {
+        t: "Only {n}% of the rendered content exists in raw HTML",
+        d: "Raw HTML contains {raw} words and the rendered DOM contains {rendered}. Major AI crawlers do not execute JavaScript, so most of the content visible to users is unavailable to them.",
+        f: "Server-render the page's primary content in the initial response instead of relying on client-side rendering for it."
+      }
+    },
+    RAW_CONTENT_PARTIAL: {
+      fa: {
+        t: "پوشش HTML خام: {n}٪",
+        d: "HTML خام {raw} کلمه و DOM رندرشده {rendered} کلمه دارد. بخشی از متن فقط بعد از اجرای JavaScript اضافه شده است؛ این اندازه‌گیری خنثی از امتیاز کم نمی‌کند.",
+        f: "اگر متن اضافه‌شده محتوای اصلی صفحه است، آن را در پاسخ اولیه سرور هم قرار بده."
+      },
+      en: {
+        t: "Raw HTML coverage: {n}%",
+        d: "Raw HTML contains {raw} words and the rendered DOM contains {rendered}. Some text was added only after JavaScript ran; this neutral measurement does not reduce the score.",
+        f: "If the added text is primary page content, include it in the initial server response too."
+      }
+    },
+    RAW_CONTENT_OK: {
+      fa: { t: "محتوای اصلی در HTML خام در دسترس است ({n}٪)", d: "", f: "" },
+      en: { t: "Primary content is available in raw HTML ({n}%)", d: "", f: "" }
+    },
+    RAW_H1_MISSING: {
+      fa: {
+        t: "بعضی تگ‌های H1 فقط با JavaScript ساخته می‌شوند",
+        d: "HTML خام {raw} تگ H1 و DOM رندرشده {rendered} مورد دارد. خزنده‌ای که JavaScript اجرا نکند بعضی یا همه عنوان‌های اصلی را نمی‌بیند.",
+        f: "حداقل H1 اصلی را در HTML پاسخ اولیه سرور قرار بده."
+      },
+      en: {
+        t: "Some H1 tags exist only after JavaScript runs",
+        d: "Raw HTML has {raw} H1 tags, while the rendered DOM has {rendered}. A crawler that does not execute JavaScript misses some or all primary headings.",
+        f: "Include the primary H1 in the server's initial HTML response."
+      }
+    },
+    RAW_H2_MISSING: {
+      fa: {
+        t: "بعضی هدینگ‌های H2 فقط با JavaScript ساخته می‌شوند",
+        d: "HTML خام {raw} تگ H2 و DOM رندرشده {rendered} مورد دارد.",
+        f: "هدینگ‌های بخش‌های اصلی را در HTML پاسخ اولیه هم رندر کن."
+      },
+      en: {
+        t: "Some H2 headings exist only after JavaScript runs",
+        d: "Raw HTML has {raw} H2 headings, while the rendered DOM has {rendered}.",
+        f: "Render the primary section headings in the initial HTML response too."
+      }
+    },
+    RAW_JSONLD_MISSING: {
+      fa: {
+        t: "‏{n} بلاک JSON-LD فقط با JavaScript اضافه شده است",
+        d: "این داده ساختاریافته در HTML خام نیست و خزنده‌ای که JavaScript اجرا نکند آن را دریافت نمی‌کند.",
+        f: "JSON-LD را داخل HTML پاسخ اولیه سرور قرار بده."
+      },
+      en: {
+        t: "{n} JSON-LD blocks are added only by JavaScript",
+        d: "This structured data is absent from raw HTML, so a crawler that does not execute JavaScript cannot receive it.",
+        f: "Include the JSON-LD in the server's initial HTML response."
+      }
+    },
+    RAW_TITLE_MISSING: {
+      fa: {
+        t: "عنوان صفحه فقط با JavaScript ساخته می‌شود",
+        d: "تگ title در HTML خام خالی است، ولی DOM رندرشده عنوان دارد.",
+        f: "عنوان را در پاسخ اولیه سرور داخل <title> قرار بده."
+      },
+      en: {
+        t: "The page title is created only by JavaScript",
+        d: "The title is empty in raw HTML but present in the rendered DOM.",
+        f: "Put the title in the initial server response's <title> element."
+      }
+    },
+    RAW_TITLE_CHANGED: {
+      fa: {
+        t: "عنوان HTML خام با عنوان رندرشده متفاوت است",
+        d: "عنوان خام {raw} است، اما JavaScript آن را به {rendered} تغییر داده است.",
+        f: "یک عنوان یکسان و نهایی را از سرور بفرست."
+      },
+      en: {
+        t: "The raw and rendered page titles differ",
+        d: "The raw title is {raw}, but JavaScript changes it to {rendered}.",
+        f: "Send one consistent, final title from the server."
+      }
+    },
+    RAW_CANON_MISSING: {
+      fa: {
+        t: "‏canonical فقط با JavaScript اضافه شده است",
+        d: "HTML خام canonical ندارد، ولی DOM رندرشده دارد.",
+        f: "تگ canonical را در HTML پاسخ اولیه سرور قرار بده."
+      },
+      en: {
+        t: "The canonical is added only by JavaScript",
+        d: "Raw HTML has no canonical, while the rendered DOM does.",
+        f: "Include the canonical link in the server's initial HTML response."
+      }
+    },
+    RAW_CANON_CHANGED: {
+      fa: {
+        t: "‏canonical خام و رندرشده متفاوت است",
+        d: "HTML خام {raw} را اعلام می‌کند، اما DOM رندرشده {rendered} را.",
+        f: "یک canonical یکسان و نهایی را مستقیماً از سرور بفرست."
+      },
+      en: {
+        t: "The raw and rendered canonicals differ",
+        d: "Raw HTML declares {raw}, while the rendered DOM declares {rendered}.",
+        f: "Send one consistent, final canonical directly from the server."
+      }
+    },
+    RAW_NOINDEX_REMOVED: {
+      fa: {
+        t: "‏noindex در HTML خام است و JavaScript آن را حذف کرده",
+        d: "گوگل ممکن است با دیدن noindex اصلاً صفحه را رندر نکند؛ در آن صورت حذف شدن دستور در DOM هیچ اثری ندارد و صفحه ایندکس نمی‌شود.",
+        f: "‏noindex را از پاسخ اولیه سرور حذف کن؛ برای قابل ایندکس کردن صفحه به JavaScript تکیه نکن."
+      },
+      en: {
+        t: "JavaScript removes a noindex from the raw HTML",
+        d: "Google may skip rendering after seeing noindex. If it does, removing the directive in the DOM has no effect and the page remains excluded.",
+        f: "Remove noindex from the server's initial response; do not rely on JavaScript to make the page indexable."
+      }
+    },
+    RAW_ROBOTS_ADDED: {
+      fa: {
+        t: "دستور robots فقط با JavaScript اضافه شده است",
+        d: "HTML خام هیچ دستور robots ندارد، اما DOM رندرشده مقدار دیگری اعلام می‌کند. خزنده‌ای که JavaScript اجرا نکند آن را دریافت نمی‌کند.",
+        f: "دستور نهایی robots را مستقیماً در پاسخ اولیه سرور قرار بده."
+      },
+      en: {
+        t: "Robots directives are added only by JavaScript",
+        d: "Raw HTML has no robots directive, while the rendered DOM declares one. A crawler that does not execute JavaScript cannot receive it.",
+        f: "Put the final robots directive directly in the server's initial response."
+      }
+    },
+    RAW_ROBOTS_REMOVED: {
+      fa: {
+        t: "دستور robots فقط با JavaScript حذف شده است",
+        d: "HTML خام دستور robots دارد، اما DOM رندرشده ندارد. بعضی خزنده‌ها فقط مقدار خام را می‌بینند.",
+        f: "دستور منسوخ را از پاسخ اولیه سرور حذف کن؛ برای اصلاح آن به JavaScript تکیه نکن."
+      },
+      en: {
+        t: "Robots directives are removed only by JavaScript",
+        d: "Raw HTML declares robots directives, while the rendered DOM does not. Some crawlers see only the raw value.",
+        f: "Remove the obsolete directive from the server's initial response instead of relying on JavaScript to correct it."
+      }
+    },
+    RAW_ROBOTS_CHANGED: {
+      fa: {
+        t: "دستور robots در HTML خام و DOM رندرشده متفاوت است",
+        d: "مقدار خام {raw} است و مقدار رندرشده {rendered}. خزنده‌ها ممکن است تصمیم‌های متفاوتی بگیرند.",
+        f: "دستور نهایی robots را مستقیماً در پاسخ اولیه سرور قرار بده."
+      },
+      en: {
+        t: "Robots directives differ between raw HTML and the rendered DOM",
+        d: "The raw value is {raw}, while the rendered value is {rendered}. Crawlers may make different decisions.",
+        f: "Put the final robots directive directly in the server's initial response."
+      }
+    },
+
     /* --- robots.txt: page-level crawling and the AI crawler matrix --- */
     ROBOTS_BLOCKS_PAGE: {
       fa: {

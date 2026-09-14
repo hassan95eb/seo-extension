@@ -45,9 +45,10 @@ The second pattern is **trust burned by dark patterns**, not by bad analysis. ME
 
 Ordered by what I would build first.
 
-> **Status, updated with v2.3.0:** items **1**, **3**, **4** and **5** are shipped. Item 2a
-> (`nosnippet` / `max-snippet`) came along with item 3, since both read the same response.
-> Items 2b, 2c, 6, 7 and 8 are still open. The per-item headings below carry their own status.
+> **Status, updated with v2.5.0:** items **1**, **2**, **3**, **4** and **5** are shipped.
+> Items 2a and 2b share the same page response; item 2c reads `/robots.txt` in parallel.
+> Items 6 and 8 remain open, while item 7 is deliberately parked. The per-item headings
+> below carry their own status.
 
 > **Added 5 September 2026:** item **8**, image weight and LCP. It is not from the August
 > competitor sweep — it comes out of the same question item 6 raises (`LargestContentfulPaint`
@@ -102,7 +103,7 @@ You already fixed one bidi bug in v2.0 (the `<bdi>` work in the CHANGELOG). Audi
 
 ---
 
-## 2. AI visibility — but only the parts that are actually documented — ◐ 2a and 2c shipped, 2b open
+## 2. AI visibility — but only the parts that are actually documented — ✅ shipped in v2.5.0
 
 Most "AI SEO" tooling is folklore. Three things here are documented by Google and are the real gates, and no extension surfaces them as AI-visibility signals.
 
@@ -114,13 +115,20 @@ Plenty of sites set `max-snippet:0` or inherit `nosnippet` from a plugin default
 
 **Fix:** compute the *effective* directive across `<meta name="robots">`, `<meta name="googlebot">`, `X-Robots-Tag`, and every `data-nosnippet` attribute — then report it as **"AI Overviews: excluded"**, not as a generic snippet note.
 
-### 2b. Raw HTML vs rendered DOM — AI crawlers do not run JavaScript
+### 2b. Raw HTML vs rendered DOM — ✅ shipped in v2.5.0
 
 Vercel measured this across its network: none of the major AI crawlers (OpenAI, Anthropic, Perplexity, Meta, ByteDance) execute JavaScript. Googlebot does. So a JS-heavy page can rank fine in Google and be **completely invisible** to ChatGPT and Perplexity.
 
 You can measure this from a content script with no server: `fetch(location.href)` is same-origin, parse with `DOMParser`, and diff raw against rendered — word count, H1/H2 presence, JSON-LD blocks, title, canonical, meta robots. Report a **"raw HTML coverage %"**.
 
 This same diff catches a brutal, silent, DOM-invisible bug Google documents explicitly: **`noindex` present in the raw HTML and removed by JavaScript.** Google may skip rendering entirely when it sees `noindex`, so the page stays deindexed forever while every DOM-based tool reports it as perfectly fine. Ahrefs Toolbar is the only competitor doing any raw-vs-rendered comparison, and it does not frame it this way.
+
+> **Shipped in v2.5.0.** The existing header request is now always a GET and its body is parsed
+> without delaying first paint. Coverage uses a multiset comparison of visible rendered words
+> against cleaned raw text: below 50% is a warning, 50–89% is a neutral stat, and 90%+ passes.
+> H1/H2 presence, JSON-LD, title, canonical and robots meta are diffed separately. A raw
+> `noindex` removed by JavaScript is an error; the other robots mutations have distinct codes.
+> The clean fixture remains exactly 100/100 and no permission was added.
 
 ### 2c. The AI crawler robots.txt matrix — ✅ shipped in v2.4.0
 
@@ -495,11 +503,11 @@ extension in the table above stop at an estimate; none of them hand back a file.
 > against the character guidance (60 English characters ≈ 540px, 160 ≈ 911px) rather than being
 > taken on faith.
 >
-> **Where item 8 sits:** after 5 (now shipped), before 6. It is behind 5 because 5 is pure formatting on data
+> **Where item 8 sits:** it is now the next item, before 6. It was behind 5 because 5 is pure formatting on data
 > already held and finishes the most-requested feature in the category, and because 5's images
 > CSV gains a weight column for free once 8 exists. It is ahead of 6 because 8's P0 is smaller
 > than 6, because it takes 6's most interesting half with it, and because 8 ends in a fix while
-> 6 ends in a number. **Order from here: 2b/2c → 8 → 6 → 7.**
+> 6 ends in a number. **Order from here: 8 → 6 → 7.**
 
 **Build 1, 3 and 4 first.** All three are small, all three fix real defects, and together they give you a release with a story: *the only page auditor that measures Persian and Arabic correctly, catches `noindex` delivered by header, and knows which rich results Google retired.*
 

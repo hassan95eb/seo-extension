@@ -121,6 +121,73 @@ const HEADERS = `<!DOCTYPE html>
 </body>
 </html>`;
 
+// A client-rendered shell. The browser sees a complete page after the inline script runs,
+// while a crawler that consumes only the response HTML sees almost none of it — plus a
+// noindex that the script dangerously removes.
+const RAW_JS_ONLY = `<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Loading application</title>
+<meta name="robots" content="noindex">
+</head>
+<body>
+<div id="app">Loading</div>
+<script>
+document.title = "A fully rendered guide to client-side search visibility";
+document.querySelector('meta[name="robots"]').remove();
+document.head.insertAdjacentHTML("beforeend", '<link rel="canonical" href="https://localhost:8443/raw-js-only.html"><script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"Client-side visibility"}<\\/script>');
+document.getElementById("app").innerHTML = '<h1>Client-side search visibility</h1><p>${"This primary article content exists only after JavaScript executes in the browser. ".repeat(35)}</p><h2>What AI crawlers receive</h2><p>${"Crawlers that do not render scripts receive the empty application shell instead. ".repeat(20)}</p><a href="/guide.html">Read the server rendering guide</a>';
+</script>
+</body>
+</html>`;
+
+// A partially server-rendered page also exercises metadata differences that are less
+// catastrophic than the empty shell above: missing raw title, changed canonical, and a
+// robots directive added by JavaScript.
+const RAW_PARTIAL = `<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title></title>
+<link rel="canonical" href="https://localhost:8443/old-partial.html">
+</head>
+<body>
+<h1>A partly server-rendered article</h1>
+<p>${"This useful sentence is already available in the initial server response for every crawler. ".repeat(30)}</p>
+<h2>Server-rendered section</h2>
+<div id="more"></div>
+<script>
+document.title = "A partly server-rendered article with client metadata";
+document.querySelector('link[rel="canonical"]').href = "https://localhost:8443/raw-partial.html";
+document.head.insertAdjacentHTML("beforeend", '<meta name="robots" content="index, follow">');
+document.getElementById("more").innerHTML = '<p>${"This different sentence is available only after the browser executes the application JavaScript. ".repeat(10)}</p>';
+</script>
+</body>
+</html>`;
+
+const RAW_ROBOTS_REMOVED = `<!DOCTYPE html>
+<html lang="en" dir="ltr"><head>
+<meta charset="utf-8"><title>Robots directives removed by client JavaScript</title>
+<meta name="robots" content="nofollow">
+<link rel="canonical" href="https://localhost:8443/raw-robots-removed.html">
+</head><body><h1>Robots directive removal</h1>
+<p>${"The complete article is present in the server response and remains unchanged after rendering. ".repeat(15)}</p>
+<script>document.querySelector('meta[name="robots"]').remove();</script>
+</body></html>`;
+
+const RAW_ROBOTS_CHANGED = `<!DOCTYPE html>
+<html lang="en" dir="ltr"><head>
+<meta charset="utf-8"><title>Robots directives changed by client JavaScript</title>
+<meta name="robots" content="nofollow">
+<link rel="canonical" href="https://localhost:8443/raw-robots-changed.html">
+</head><body><h1>Robots directive replacement</h1>
+<p>${"The complete article is present in the server response and remains unchanged after rendering. ".repeat(15)}</p>
+<script>document.querySelector('meta[name="robots"]').content = "noarchive";</script>
+</body></html>`;
+
 // Images and links with enough variety to exercise the inventory tables behind the CSV
 // export: alt present/absent, a real decoded image, an external link, a nofollow, and a
 // value that a spreadsheet would execute if the export did not neutralise it.
@@ -171,4 +238,7 @@ Sitemap: https://localhost:8443/sitemap.xml
 Crawl-delay: 5
 `;
 
-module.exports = { CLEAN, RTL_BROKEN, RTL_GOOD, SCHEMA, HEADERS, ASSETS, ROBOTS_TXT };
+module.exports = {
+  CLEAN, RTL_BROKEN, RTL_GOOD, SCHEMA, HEADERS, RAW_JS_ONLY, RAW_PARTIAL,
+  RAW_ROBOTS_REMOVED, RAW_ROBOTS_CHANGED, ASSETS, ROBOTS_TXT
+};
