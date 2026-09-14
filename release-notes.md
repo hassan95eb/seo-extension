@@ -1,3 +1,16 @@
+## v2.5.0
+
+SEO Lens can now compare the page's raw server HTML with the DOM users see after JavaScript
+runs — the missing view for AI crawlers that do not render scripts.
+
+- Raw HTML coverage percentage with real word matching, not just a count ratio
+- H1/H2, JSON-LD, title, canonical and robots-meta differences
+- Critical detection for `noindex` present in raw HTML but removed by JavaScript
+- Separate reporting for robots directives added, removed or replaced on the client
+- Same async request as the header audit, so first paint stays instant
+- No new permission, host access, server, account or telemetry
+- Persian and English wording throughout; clean pages still score exactly 100
+
 ## v2.4.0
 
 Gap-analysis item 2c: the AI crawler robots.txt matrix. The engine now reads the site's own
