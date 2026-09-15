@@ -238,7 +238,99 @@ Sitemap: https://localhost:8443/sitemap.xml
 Crawl-delay: 5
 `;
 
+/* ---------- real image bytes, for the LCP pass ----------
+ * LCP cannot be exercised with the 1×1 data URI above: Chrome drops low-entropy images as
+ * LCP candidates, so a solid-colour placeholder is never reported as the largest paint
+ * however large it is displayed. These are deterministic noise PNGs — incompressible on
+ * purpose, so the entropy filter keeps them — written here rather than committed as binary
+ * fixtures, which keeps the repo free of 1.4 MB of test assets.
+ */
+const zlib = require("zlib");
+
+const CRC = (() => {
+  const table = new Int32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    table[n] = c;
+  }
+  return (buf) => {
+    let c = -1;
+    for (let i = 0; i < buf.length; i++) c = table[(c ^ buf[i]) & 0xff] ^ (c >>> 8);
+    return (c ^ -1) >>> 0;
+  };
+})();
+
+function pngChunk(type, data) {
+  const len = Buffer.alloc(4);
+  len.writeUInt32BE(data.length, 0);
+  const body = Buffer.concat([Buffer.from(type, "latin1"), data]);
+  const crc = Buffer.alloc(4);
+  crc.writeUInt32BE(CRC(body), 0);
+  return Buffer.concat([len, body, crc]);
+}
+
+function noisePng(width, height) {
+  const stride = width * 3 + 1;
+  const raw = Buffer.alloc(stride * height);
+  let seed = 20260915;
+  for (let y = 0; y < height; y++) {
+    let p = y * stride;
+    raw[p++] = 0; // filter: none
+    for (let x = 0; x < width * 3; x++) {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      raw[p++] = (seed >> 16) & 0xff;
+    }
+  }
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8; // bit depth
+  ihdr[9] = 2; // truecolour
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    pngChunk("IHDR", ihdr),
+    pngChunk("IDAT", zlib.deflateSync(raw, { level: 1 })),
+    pngChunk("IEND", Buffer.alloc(0))
+  ]);
+}
+
+const HERO_PNG = noisePng(800, 600);   // displayed at 640×480 — the LCP element
+const THUMB_PNG = noisePng(600, 450);  // displayed at 200×150 — overscaled on any screen
+const TWOX_PNG = noisePng(400, 300);   // displayed at 200×150 — correct on a 2× screen only
+const LOGO_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160">' +
+  '<rect width="160" height="160" fill="#0e7490"/></svg>';
+
+/* The image fixture: one clear LCP candidate that is also lazy-loaded and unprioritised,
+ * a second lazy above-the-fold image that must survive the LCP de-duplication, a 2× asset
+ * that is only overscaled on a 1× screen, and a vector that must not be accused of using
+ * a legacy format. The row is a flex line so every image stays inside the first viewport
+ * regardless of wrapping, and the prose is width-capped so it cannot out-paint the hero.
+ */
+const IMAGES = `<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A gallery page whose hero image is the largest paint</title>
+<meta name="description" content="This fixture exists so the LCP pass has something to find: a hero image large enough to be the largest paint, lazy-loaded, and served in a legacy format without a srcset.">
+<link rel="canonical" href="https://localhost:8443/images.html">
+</head>
+<body>
+<h1>Gallery</h1>
+<div style="display:flex;gap:8px;align-items:flex-start">
+<img id="hero" src="/hero.png" alt="A wide photograph of the workshop" width="640" height="480" loading="lazy">
+<img id="thumb" src="/thumb.png" alt="A thumbnail of the same workshop" width="200" height="150" loading="lazy">
+<img id="twox" src="/twox.png" alt="A double-density thumbnail" width="200" height="150">
+<img id="vector" src="/logo.svg" alt="The workshop logo" width="160" height="160">
+</div>
+<p style="max-width:520px">${"The gallery above is the whole point of this page, which is exactly the situation the LCP pass is for. ".repeat(10)}</p>
+</body>
+</html>`;
+
 module.exports = {
   CLEAN, RTL_BROKEN, RTL_GOOD, SCHEMA, HEADERS, RAW_JS_ONLY, RAW_PARTIAL,
-  RAW_ROBOTS_REMOVED, RAW_ROBOTS_CHANGED, ASSETS, ROBOTS_TXT
+  RAW_ROBOTS_REMOVED, RAW_ROBOTS_CHANGED, ASSETS, ROBOTS_TXT,
+  IMAGES, HERO_PNG, THUMB_PNG, TWOX_PNG, LOGO_SVG
 };

@@ -23,13 +23,17 @@ const read = (f) => fs.readFileSync(path.join(REPO, f), "utf8");
   const ctx = await b.newContext({ ignoreHTTPSErrors: true, viewport: { width: 1100, height: 1400 } });
   const page = await ctx.newPage();
 
-  for (const [fixture, lang] of [["rtl-broken.html", "fa"], ["schema.html", "en"]]) {
+  // images.html is in the list so the LCP findings render in the PDF as well as the panel.
+  for (const [fixture, lang, name] of [
+    ["rtl-broken.html", "fa", "fa"], ["schema.html", "en", "en"], ["images.html", "fa", "lcp-fa"]
+  ]) {
     await page.goto(`https://localhost:8443/${fixture}`);
     await page.addScriptTag({ content: read("i18n.js") });
     await page.addScriptTag({ content: read("audit.js") });
     const payload = await page.evaluate(async (l) => {
       const r = window.__SEO_LENS_AUDIT__();
       await window.__SEO_LENS_AUDIT_HEADERS__(r);
+      await window.__SEO_LENS_AUDIT_LCP__(r);
       return {
         lang: l, url: r.url, title: r.title, brand: r.brand, score: r.score,
         counts: r.counts, generatedAt: r.generatedAt,
@@ -46,7 +50,7 @@ const read = (f) => fs.readFileSync(path.join(REPO, f), "utf8");
     }, payload);
     await rp.goto("http://localhost:8080/report.html");
     await rp.waitForTimeout(600);
-    const shot = path.join(__dirname, `report-${lang}.png`);
+    const shot = path.join(__dirname, `report-${name}.png`);
     await rp.screenshot({ path: shot, fullPage: false });
     const info = await rp.evaluate(() => ({
       dir: document.documentElement.getAttribute("dir"),
@@ -54,7 +58,7 @@ const read = (f) => fs.readFileSync(path.join(REPO, f), "utf8");
       passes: document.querySelectorAll(".pass-row").length,
       title: document.getElementById("v-title").textContent.slice(0, 40)
     }));
-    console.log(`report-${lang}: dir=${info.dir} findings=${info.findings} passes=${info.passes} → ${shot}`);
+    console.log(`report-${name}: dir=${info.dir} findings=${info.findings} passes=${info.passes} → ${shot}`);
     await rp.close();
   }
   await b.close(); tls.close(); files.close();

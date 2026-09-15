@@ -29,11 +29,12 @@ npm run report  # renders report.html in both languages and screenshots it
 | `robots.txt` + `ai-blocked.html` | The AI crawler matrix: a multi-agent group, a `*` wildcard rule and a `$`-anchored one, and the split between search crawlers (a warning) and training crawlers (a `stat` that costs nothing). One path-scoped `robots.txt` serves the whole origin, so `clean.html` stays genuinely unblocked. |
 | `private/page.html`, `private/public.html` | A URL disallowed for Googlebot is an error; an agent with no group of its own falls back to `*` while one with a group ignores `*` entirely; a longer `Allow` beats the folder `Disallow`. |
 | `:8444`, `:8445` | robots.txt is per-origin, so the two degenerate responses get their own servers: `/robots.txt` answering with HTML, and `/robots.txt` answering 503. |
+| `images.html` | Image weight and LCP: the hero is the largest paint, it is lazy-loaded and unprioritised, a second above-the-fold lazy image proves the LCP de-duplication removes one element rather than the finding, the SVG is not called a legacy format, and the same page is audited again at `deviceScaleFactor: 2` where the 2× asset must **not** be called oversized. Its images are generated noise PNGs — Chrome ignores low-entropy images as LCP candidates, so a solid-colour placeholder would never be reported at all. |
 | `assets.html` | The developer hand-off: the image and link inventories, all three CSVs, the ticket format and copy-all-errors. Its first image carries an `alt` shaped like a spreadsheet formula, so the export's injection guard is exercised on every run rather than trusted. |
 
 The export assertions drive the real panel — a click on the export menu, a real download
 event, and a stubbed `navigator.clipboard` whose argument is read back — rather than calling
 the builders directly, because the thing that breaks is the wiring, not the string joining.
 
-Both panel screenshots and both report screenshots are written next to the harness, plus
-`panel-export.png`. Look at them; the RTL ones are where layout regressions actually show up.
+Both panel screenshots and all three report screenshots are written next to the harness, plus
+`panel-export.png` and `panel-lcp-en.png` / `panel-lcp-fa.png`. Look at them; the RTL ones are where layout regressions actually show up.

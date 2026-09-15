@@ -218,7 +218,7 @@ that second obligation.
 
 ---
 
-## 6. Core Web Vitals, measured honestly — ○ open, narrowed to INP and CLS
+## 6. Core Web Vitals, measured honestly — ○ open, narrowed to INP and CLS (v2.6.0 took LCP)
 
 SEO Pro and Ahrefs Toolbar show CWV; most others do not. The metrics are still LCP, INP, CLS — nothing new since INP replaced FID in 2024, so anyone advertising a fourth Core Web Vital is wrong.
 
@@ -250,7 +250,7 @@ The bridge that makes this credible rather than folklore: **Google's own Lightho
 
 ---
 
-## 8. Image weight and LCP — measure the saving instead of estimating it — ○ open
+## 8. Image weight and LCP — measure the saving instead of estimating it — ◐ P0 shipped in v2.6.0
 
 Every performance tool in and around this category reports **estimated** savings and stops
 there. Lighthouse says "properly size images — potential savings 412 KB" and hands the number
@@ -406,7 +406,7 @@ Where it lands in the existing split:
 | Encoding worker | new file | New, and its home is an open question (8h) |
 | Injection list | `ensureInjected()` in `background.js` currently injects exactly `i18n.js`, `audit.js`, `content.js` | Changes only if the encoder becomes a fourth injected file |
 
-**P0 — DOM-only. No bytes, no encoder, no manifest change.**
+**P0 — DOM-only. No bytes, no encoder, no manifest change. — ✅ shipped in v2.6.0**
 LCP image identified and outlined on the page; `fetchpriority` missing on it; `loading="lazy"`
 above the fold; format and `srcset` gaps; the `IMG_OVERSIZED` DPR correction.
 
@@ -423,7 +423,7 @@ two languages in `i18n.js`. *Risk:* low. The one real risk is the `IMG_OVERSIZED
 change moving scores on pages that previously audited clean — a CHANGELOG matter, not an
 engineering one.
 
-**P1 — measured weight and the Optimize action, same-origin images only.**
+**P1 — measured weight and the Optimize action, same-origin images only. — ○ next**
 Same-origin images need no host permission, and `encodedBodySize` is populated for them without
 a `Timing-Allow-Origin` header, so the whole measurement story works honestly inside the
 existing permission model. Adds the encoder, the before/after readout, and the download.
@@ -487,6 +487,19 @@ None are blocking; all want a decision before implementation.
    to the initial navigation — on an SPA that has since changed route, or a page the user has
    been scrolling for a minute, the entry may describe an element that is no longer the visual
    hero. Same honesty requirement as item 6: say it in the UI.
+
+**Decided, in v2.6.0 (P0):**
+
+1. **The headline collision (8h.1)** — resolved as proposed: `LCP_IMG` / `LCP_TEXT` are `stat`,
+   and the finding gets its own slot in the panel header beside the score. Severity was not
+   inflated to buy ordering, and the list row stays where `finalize()` puts it.
+2. **Double counting** — not in the original list, and found while building: an above-the-fold
+   lazy image that is also the LCP image would have been charged twice, by `IMG_LAZY_ABOVE` and
+   by `LCP_LAZY`. The LCP pass removes it from the generic finding before `finalize()` runs.
+3. **The `IMG_OVERSIZED` correction shipped with the ratio in `detailRaw`** (`600px → 200px @1×`)
+   and is verified at `deviceScaleFactor: 2` as well as 1.
+4. **8h.2, 8h.3, 8h.4 and 8h.5 are still open**, because P0 touches none of them: no encoder, no
+   byte values to serialize, no outbound request for an asset, no permission change.
 
 **Effort:** small (P0), medium (P1), medium (P2). **Differentiation:** high, and of an unusual
 kind — the detection is commodity and the *fix* is not. Lighthouse, PageSpeed and every SEO

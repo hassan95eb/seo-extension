@@ -1,3 +1,17 @@
+## v2.6.0
+
+SEO Lens now tells you which element the page's loading speed is actually measured by — and
+draws a box around it.
+
+- The LCP element identified and outlined on the page, image or text block
+- A warning when that image is lazy-loaded, a notice when it has no `fetchpriority="high"`
+- Its own slot in the panel header, next to the score, so the finding is not buried
+- New checks: lazy-loading above the fold, legacy image formats, large images without `srcset`
+- Overscaled images are now measured against the screen's pixel ratio, so a correct 2× asset is
+  no longer accused on a Retina display — and a bloated one no longer slips through on a 1× one
+- No new permission, no encoder, no bytes fetched, nothing leaves the browser
+- Persian and English throughout; clean pages still score exactly 100
+
 ## v2.5.0
 
 SEO Lens can now compare the page's raw server HTML with the DOM users see after JavaScript

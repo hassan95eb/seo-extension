@@ -39,6 +39,10 @@
       pdfOpening: "در حال باز کردن گزارش…",
       moreItems: "نمایش {n} مورد دیگر",
       lessItems: "نمایش کمتر",
+      // LCP slot in the panel header
+      lcpTag: "LCP",
+      lcpTitle: "بزرگ‌ترین المان صفحه — کلیک کن تا روی صفحه نشانت بدهم",
+      lcpMs: "{n} میلی‌ثانیه",
       sevError: "ایراد جدی",
       sevWarning: "هشدار",
       sevInfo: "نکته",
@@ -79,6 +83,9 @@
       hRendered: "ابعاد نمایش",
       hNatural: "ابعاد فایل",
       hLoading: "loading",
+      hPriority: "fetchpriority",
+      hFormat: "فرمت",
+      hSrcset: "srcset دارد",
       hVisible: "قابل مشاهده",
       hAboveFold: "بالای خط تا",
       hHref: "مقصد",
@@ -163,6 +170,10 @@
       pdfOpening: "Opening report…",
       moreItems: "Show {n} more",
       lessItems: "Show less",
+      // LCP slot in the panel header
+      lcpTag: "LCP",
+      lcpTitle: "The page's largest paint — click to outline it",
+      lcpMs: "{n} ms",
       sevError: "Error",
       sevWarning: "Warning",
       sevInfo: "Notice",
@@ -202,6 +213,9 @@
       hRendered: "Rendered size",
       hNatural: "Natural size",
       hLoading: "loading",
+      hPriority: "fetchpriority",
+      hFormat: "Format",
+      hSrcset: "Has srcset",
       hVisible: "Visible",
       hAboveFold: "Above the fold",
       hHref: "Href",
@@ -366,12 +380,40 @@
       en: { t: "{n} images without width/height", d: "Missing dimensions cause layout shift (CLS) and hurt Core Web Vitals.", f: "Set width and height attributes, or define an aspect-ratio." }
     },
     IMG_OVERSIZED: {
-      fa: { t: "{n} تصویر بزرگ‌تر از نیاز بارگذاری شده", d: "", f: "تصویر را در اندازه واقعی نمایش سرو کن یا از srcset استفاده کن." },
-      en: { t: "{n} images served larger than displayed", d: "", f: "Serve them at display size or use srcset." }
+      fa: { t: "{n} تصویر بزرگ‌تر از نیاز بارگذاری شده", d: "اندازه فایل نسبت به اندازه نمایش و تراکم پیکسل همین نمایشگر سنجیده شده است.", f: "تصویر را در اندازه واقعی نمایش سرو کن یا از srcset استفاده کن." },
+      en: { t: "{n} images served larger than displayed", d: "Measured against the rendered size and this screen's pixel density.", f: "Serve them at display size or use srcset." }
     },
     IMG_NO_LAZY: {
       fa: { t: "{n} تصویر پایین صفحه بدون lazy-load", d: "این تصاویر همان اول بارگذاری می‌شوند و LCP را کند می‌کنند.", f: 'loading="lazy" اضافه کن (به تصاویر بالای صفحه نزن).' },
       en: { t: "{n} below-the-fold images without lazy loading", d: "They load immediately and slow down LCP.", f: 'Add loading="lazy" (never to above-the-fold images).' }
+    },
+    IMG_LAZY_ABOVE: {
+      fa: { t: "{n} تصویر بالای صفحه با lazy-load", d: "تصویر داخل نمای اول از صف بارگذاری اولیه بیرون می‌افتد و دیرتر از همه شروع می‌شود؛ این دقیقاً LCP را بدتر می‌کند.", f: 'روی تصاویر نمای اول loading="lazy" نگذار.' },
+      en: { t: "{n} above-the-fold images set to lazy load", d: "An image inside the first viewport is dropped from the initial fetch queue and starts last, which makes LCP worse rather than better.", f: 'Remove loading="lazy" from images in the first viewport.' }
+    },
+    IMG_LEGACY_FORMAT: {
+      fa: { t: "{n} تصویر با فرمت قدیمی", d: "WebP و AVIF معمولاً همان تصویر را با حجم به‌مراتب کمتر می‌دهند و هر دو در همه مرورگرهای امروزی پشتیبانی می‌شوند.", f: "نسخه WebP یا AVIF بساز و با <picture> نسخه قدیمی را به‌عنوان جایگزین نگه دار." },
+      en: { t: "{n} images in a legacy format", d: "WebP and AVIF usually deliver the same image at a fraction of the bytes, and both are supported across current browsers.", f: "Serve WebP or AVIF, keeping the old file as a <picture> fallback." }
+    },
+    IMG_NO_SRCSET: {
+      fa: { t: "{n} تصویر بزرگ بدون srcset", d: "بدون srcset همان فایل دسکتاپ برای موبایل هم فرستاده می‌شود.", f: "برای عرض‌های مختلف srcset و sizes تعریف کن." },
+      en: { t: "{n} large images without srcset", d: "Without srcset the desktop file is what phones download too.", f: "Define srcset and sizes for the widths you actually serve." }
+    },
+    LCP_IMG: {
+      fa: { t: "بزرگ‌ترین المان صفحه یک تصویر است", d: "این تصویر همان چیزی است که سرعت دیده‌شدن صفحه با آن سنجیده می‌شود ({n} میلی‌ثانیه). عدد مربوط به بارگذاری اولیه همین صفحه در همین مرورگر است، نه داده میدانی کاربران.", f: "این تصویر را اول از همه و در کمترین حجم ممکن برسان." },
+      en: { t: "The largest paint on this page is an image", d: "This image is what the page's perceived load speed is measured by ({n} ms). The number describes this one visit's initial navigation, not field data.", f: "Deliver this image first, and at the smallest size that still looks right." }
+    },
+    LCP_TEXT: {
+      fa: { t: "بزرگ‌ترین المان صفحه یک بلوک متنی است", d: "هیچ تصویری LCP صفحه نیست ({n} میلی‌ثانیه) — یعنی سرعت دیده‌شدن به فونت و CSS بسته است، نه به تصاویر.", f: "فونت را preload کن و CSS مسدودکننده رندر را کم کن." },
+      en: { t: "The largest paint on this page is a block of text", d: "No image is the LCP element here ({n} ms), so perceived speed depends on fonts and CSS rather than on images.", f: "Preload the font and cut render-blocking CSS." }
+    },
+    LCP_LAZY: {
+      fa: { t: "تصویر LCP با lazy-load بارگذاری می‌شود", d: "مهم‌ترین تصویر صفحه از صف اولیه بیرون گذاشته شده و دیرتر از بقیه شروع می‌شود.", f: 'loading="lazy" را از همین تصویر بردار.' },
+      en: { t: "The LCP image is lazy-loaded", d: "The one image the page is judged by has been pushed out of the initial fetch queue.", f: 'Remove loading="lazy" from this image.' }
+    },
+    LCP_NO_PRIORITY: {
+      fa: { t: 'تصویر LCP بدون fetchpriority="high"', d: "مرورگر به‌طور پیش‌فرض نمی‌داند این تصویر از بقیه مهم‌تر است.", f: 'روی همین تگ img مقدار fetchpriority="high" بگذار.' },
+      en: { t: 'The LCP image has no fetchpriority="high"', d: "By default the browser has no way to know this image matters more than the rest.", f: 'Add fetchpriority="high" to this img tag.' }
     },
     IMG_GENERIC_NAME: {
       fa: { t: "{n} تصویر با نام فایل بی‌معنی", d: "مثل IMG_1234.jpg — سیگنال سئوی تصویر را از دست می‌دهی.", f: "نام فایل را توصیفی و با خط تیره بنویس." },
