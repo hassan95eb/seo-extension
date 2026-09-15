@@ -202,6 +202,22 @@
       .catch((e) => console.debug("SEO Lens headers:", e));
   }
 
+  // The largest paint is read from the browser's own timeline rather than the markup, so
+  // it lands in its own pass for the same reason as the header one: the panel has already
+  // painted by the time it answers.
+  function runLcpAudit() {
+    if (!report || !window.__SEO_LENS_AUDIT_LCP__) return;
+    const token = auditToken;
+    const target = report;
+    window.__SEO_LENS_AUDIT_LCP__(report)
+      .then(() => {
+        if (token !== auditToken || report !== target) return;
+        pushScore();
+        renderAll();
+      })
+      .catch((e) => console.debug("SEO Lens lcp:", e));
+  }
+
   /* ---------- report export ---------- */
   function serializeReport() {
     return {
@@ -357,13 +373,13 @@
   function imagesRows() {
     const tbl = (report.tables && report.tables.images) || [];
     const head = [
-      t("hSrc"), t("hAlt"), t("hHasAlt"), t("hRendered"), t("hNatural"),
-      t("hLoading"), t("hVisible"), t("hAboveFold"), t("hPath")
+      t("hSrc"), t("hAlt"), t("hHasAlt"), t("hRendered"), t("hNatural"), t("hFormat"),
+      t("hSrcset"), t("hLoading"), t("hPriority"), t("hVisible"), t("hAboveFold"), t("hPath")
     ];
     return [head].concat(tbl.map((r) => [
       r.src, r.alt, yesNo(r.hasAlt), `${r.width}×${r.height}`,
-      `${r.naturalWidth}×${r.naturalHeight}`, r.loading, yesNo(r.visible),
-      yesNo(r.aboveFold), r.path
+      `${r.naturalWidth}×${r.naturalHeight}`, r.format, yesNo(r.srcset),
+      r.loading, r.fetchpriority, yesNo(r.visible), yesNo(r.aboveFold), r.path
     ]));
   }
 
@@ -476,6 +492,11 @@
           <button id="sl-close" title="${t("close")}">✕</button>
         </div>
       </div>
+      <button class="sl-lcp" id="sl-lcp" title="${t("lcpTitle")}" hidden>
+        <span class="sl-lcp-tag">${t("lcpTag")}</span>
+        <span class="sl-lcp-name" id="sl-lcp-name"></span>
+        <span class="sl-lcp-ms" id="sl-lcp-ms"></span>
+      </button>
       <div class="sl-tools">
         <button id="sl-hl-all">${t("hlAll")}</button>
         <button id="sl-clear">${t("clear")}</button>
@@ -509,7 +530,7 @@
 
     shadow.querySelector("#sl-close").addEventListener("click", closePanel);
     shadow.querySelector("#sl-rescan").addEventListener("click", () => {
-      clearHighlights(); highlightAllOn = false; runAudit(); renderAll(); runHeaderAudit();
+      clearHighlights(); highlightAllOn = false; runAudit(); renderAll(); runHeaderAudit(); runLcpAudit();
     });
     shadow.querySelector("#sl-lang").addEventListener("click", () => {
       lang = lang === "fa" ? "en" : "fa";
@@ -519,6 +540,10 @@
       if (tracked.length) drawTracked(false);
     });
     shadow.querySelector("#sl-hl-all").addEventListener("click", highlightAll);
+    shadow.querySelector("#sl-lcp").addEventListener("click", () => {
+      const issue = lcpIssue();
+      if (issue) highlightIssue(issue, true);
+    });
     shadow.querySelector("#sl-clear").addEventListener("click", () => {
       clearHighlights(); highlightAllOn = false; activeIssueId = null; renderList();
     });
@@ -580,7 +605,32 @@
     shadow.querySelector("#sl-cnt-warning").textContent = c.warnings;
     shadow.querySelector("#sl-cnt-info").textContent = c.infos;
     shadow.querySelector("#sl-cnt-pass").textContent = c.passes;
+    renderLcp();
     renderList();
+  }
+
+  const lcpIssue = () =>
+    (report && report.issues.find((i) => i.code === "LCP_IMG" || i.code === "LCP_TEXT")) || null;
+
+  /* Being the largest paint is a measurement, not a defect, so under hard rule 5 it is a
+   * `stat` — which finalize() sorts to the bottom of the list, where the single most
+   * useful line in a performance audit would go unread. It gets its own slot beside the
+   * score instead of being promoted to a severity it has not earned. The row stays in the
+   * list as well; this is a shortcut to it, not a second source of truth.
+   */
+  function renderLcp() {
+    const slot = shadow.querySelector("#sl-lcp");
+    if (!slot) return;
+    const issue = lcpIssue();
+    if (!issue) { slot.hidden = true; return; }
+    const target = (issue.paths && issue.paths[0]) || null;
+    // The filename for an image, the selector for a text block — both are lifted off the
+    // audited page, so both are isolated before they are shown (hard rule 8).
+    const name = issue.detailRaw || (target ? target.path : "");
+    slot.querySelector("#sl-lcp-name").innerHTML = `<bdi dir="auto">${esc(name)}</bdi>`;
+    const ms = issue.params && issue.params.n;
+    slot.querySelector("#sl-lcp-ms").textContent = ms ? t("lcpMs", { n: ms }) : "";
+    slot.hidden = false;
   }
 
   function renderList() {
@@ -700,6 +750,7 @@
       runAudit();
       renderAll();
       runHeaderAudit();
+      runLcpAudit();
       panelOpen = true;
     });
   }
@@ -751,6 +802,19 @@
   .sl-actions button{background:#1e293b;border:none;color:#cbd5e1;min-width:28px;height:28px;padding:0 6px;
     border-radius:8px;cursor:pointer;font-size:12px;line-height:1;font-family:inherit;font-weight:600;}
   .sl-actions button:hover{background:#334155;color:#fff;}
+  /* Any element in this sheet that sets display and is also hidden by attribute needs its
+     own [hidden] rule — a bare [hidden] in the UA sheet loses to the rule above it. That
+     is the v2.3.1 bug, and it is cheaper to repeat the rule than to ship it twice. */
+  .sl-lcp{display:flex;align-items:center;gap:7px;width:calc(100% - 24px);margin:8px 12px 0;
+    padding:7px 9px;background:#15233d;border:1px solid #24406b;border-radius:9px;cursor:pointer;
+    font-family:inherit;font-size:11px;color:#cbd5e1;text-align:start;}
+  .sl-lcp[hidden]{display:none;}
+  .sl-lcp:hover{background:#1b2c4c;border-color:#356094;}
+  .sl-lcp-tag{flex:none;background:#0e7490;color:#fff;font-weight:700;font-size:9.5px;letter-spacing:.5px;
+    padding:2px 6px;border-radius:5px;}
+  .sl-lcp-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    unicode-bidi:isolate;color:#e2e8f0;}
+  .sl-lcp-ms{flex:none;color:#94a3b8;unicode-bidi:isolate;}
   .sl-tools{display:flex;gap:6px;padding:8px 12px 0;}
   .sl-tools:last-of-type{padding-bottom:2px;}
   .sl-tools button{flex:1;background:#1e293b;border:1px solid #263449;color:#cbd5e1;padding:7px 6px;

@@ -16,13 +16,19 @@ function check(name, ok, detail) {
   if (!ok) failures++;
 }
 
+// `withAsync` runs both asynchronous passes — headers/raw HTML and LCP — the way the panel
+// does. Called with false it asserts on the synchronous first paint alone, which is how the
+// LCP de-duplication is shown to actually remove something.
 async function auditPage(page, url, wantHeaders) {
   await page.goto(url, { waitUntil: "load" });
   await page.addScriptTag({ content: read("i18n.js") });
   await page.addScriptTag({ content: read("audit.js") });
   return page.evaluate(async (withHeaders) => {
     const r = window.__SEO_LENS_AUDIT__();
-    if (withHeaders) await window.__SEO_LENS_AUDIT_HEADERS__(r);
+    if (withHeaders) {
+      await window.__SEO_LENS_AUDIT_HEADERS__(r);
+      await window.__SEO_LENS_AUDIT_LCP__(r);
+    }
     return {
       score: r.score,
       counts: r.counts,
@@ -98,6 +104,10 @@ async function openPanel(page, url, lang) {
   check("robots.txt findings cost a clean page nothing", r.score === 100);
   check("clean raw HTML has full rendered-content coverage", !!find(r, "RAW_CONTENT_OK") && find(r, "RAW_CONTENT_OK").params.n >= 90,
     find(r, "RAW_CONTENT_OK") ? `${find(r, "RAW_CONTENT_OK").params.n}%` : "nothing found");
+  const lcpText = find(r, "LCP_TEXT");
+  check("a page with no images reports a text largest paint", !!lcpText && lcpText.severity === "stat",
+    lcpText ? `${lcpText.params.n}ms` : "no LCP entry");
+  check("the LCP measurement costs a clean page nothing", r.score === 100, `score ${r.score}`);
 
   /* ---- 2. RTL defects ---- */
   console.log("\nrtl-broken.html");
@@ -231,6 +241,52 @@ async function openPanel(page, url, lang) {
   check("rating that IS on the page is not flagged", !!inv && inv.detailRaw.indexOf("4.8") === -1, inv ? inv.detailRaw : "");
   check("SD_OK still lists the types", !!find(r, "SD_OK"), find(r, "SD_OK") ? find(r, "SD_OK").detailRaw : "");
 
+  /* ---- 4b. image weight and LCP ---- */
+  console.log("\nimages.html");
+  const sync = await auditPage(page, `${B}/images.html`, false);
+  const lazySync = find(sync, "IMG_LAZY_ABOVE");
+  check("both above-the-fold lazy images are caught before the LCP pass",
+    !!lazySync && lazySync.count === 2 && lazySync.severity === "warning",
+    lazySync ? `${lazySync.count} elements` : "nothing found");
+
+  r = await auditPage(page, `${B}/images.html`, true);
+  const lcpImg = find(r, "LCP_IMG");
+  check("the largest paint is identified as an image", !!lcpImg && lcpImg.severity === "stat",
+    lcpImg ? `${lcpImg.detailRaw} · ${lcpImg.params.n}ms` : "no LCP entry");
+  check("and it is the hero, not a thumbnail", !!lcpImg && lcpImg.detailRaw === "hero.png",
+    lcpImg ? lcpImg.detailRaw : "");
+  check("the LCP element is highlightable on the page", !!lcpImg && lcpImg.count === 1);
+  const lcpLazy = find(r, "LCP_LAZY");
+  check("a lazy-loaded LCP image is a warning", !!lcpLazy && lcpLazy.severity === "warning");
+  const lazyAsync = find(r, "IMG_LAZY_ABOVE");
+  check("the LCP image is not also counted by the generic lazy finding",
+    !!lazyAsync && lazyAsync.count === 1 && lazyAsync.params.n === 1,
+    lazyAsync ? `${lazyAsync.count} left` : "finding removed entirely");
+  const prio = find(r, "LCP_NO_PRIORITY");
+  check('missing fetchpriority="high" on the LCP image is an info', !!prio && prio.severity === "info");
+  const legacy = find(r, "IMG_LEGACY_FORMAT");
+  check("legacy raster formats are flagged", !!legacy && legacy.count === 3,
+    legacy ? `${legacy.count} images · ${legacy.detailRaw}` : "nothing found");
+  check("the SVG is not accused of being a legacy format", !!legacy && legacy.detailRaw.indexOf("svg") === -1);
+  const srcset = find(r, "IMG_NO_SRCSET");
+  check("only the wide image is asked for a srcset", !!srcset && srcset.count === 1,
+    srcset ? `${srcset.count} images` : "nothing found");
+  const over = find(r, "IMG_OVERSIZED");
+  check("overscale is measured at this screen's pixel ratio", !!over && over.count === 2,
+    over ? over.detailRaw : "nothing found");
+  check("and the ratio it was measured at is in the detail", !!over && /@1×/.test(over.detailRaw));
+
+  // The same page on a 2× screen: a 400px asset displayed at 200px is correctly authored
+  // there, and the pre-v2.6 rule (naturalWidth > width * 2, with no DPR term) had no way
+  // to say so. This is the assertion that the correction actually corrects something.
+  console.log("\nimages.html on a 2× screen");
+  const hidpi = await browser.newContext({ ignoreHTTPSErrors: true, viewport: { width: 1280, height: 900 }, deviceScaleFactor: 2 });
+  const hidpiPage = await hidpi.newPage();
+  const r2 = await auditPage(hidpiPage, `${B}/images.html`, false);
+  check("a 2× asset is not called oversized on a 2× screen", !find(r2, "IMG_OVERSIZED"),
+    find(r2, "IMG_OVERSIZED") ? find(r2, "IMG_OVERSIZED").detailRaw : "no finding, as intended");
+  await hidpi.close();
+
   /* ---- 5. panel renders, both languages ---- */
   console.log("\npanel");
   for (const [url, lang, name] of [[`${B}/rtl-broken.html`, "fa", "panel-fa"], [`${B}/schema.html`, "en", "panel-en"]]) {
@@ -269,6 +325,36 @@ async function openPanel(page, url, lang) {
     });
     check(`${name} panel renders`, !!rendered && rendered.items > 0, rendered ? `dir=${rendered.dir} score=${rendered.score} items=${rendered.items} · ${rendered.firstTitle}` : "no panel");
     console.log(`        screenshot: ${shot}`);
+  }
+
+  /* ---- 5b. the LCP slot in the panel header ---- */
+  for (const lang of ["en", "fa"]) {
+  console.log(`\nLCP slot (${lang})`);
+  await openPanel(page, `${B}/images.html`, lang);
+  // Computed style, not the hidden attribute: `.sl-lcp{display:flex}` would outrank the
+  // UA sheet's `[hidden]{display:none}` exactly the way the v2.3.0 export menu did.
+  const slot = await page.evaluate(() => {
+    const sh = window.__panel();
+    const el = sh.querySelector("#sl-lcp");
+    return {
+      shown: getComputedStyle(el).display !== "none",
+      name: sh.querySelector("#sl-lcp-name").textContent,
+      ms: sh.querySelector("#sl-lcp-ms").textContent,
+      outlined: (() => {
+        el.click();
+        const layer = Array.from(document.documentElement.children)
+          .find((n) => n.id && /^seo-lens-root-.*-ov$/.test(n.id));
+        return !!(layer && layer.shadowRoot && layer.shadowRoot.querySelectorAll(".box").length);
+      })()
+    };
+  });
+  check("the LCP slot is shown when an image is the largest paint", slot.shown === true);
+  check("the slot names the file", slot.name.indexOf("hero.png") > -1, slot.name);
+  check("the slot carries the timing", /\d/.test(slot.ms), slot.ms);
+  check("clicking the slot outlines the element on the page", slot.outlined === true);
+  const shot = path.join(__dirname, `panel-lcp-${lang}.png`);
+  await page.screenshot({ path: shot });
+  console.log(`        screenshot: ${shot}`);
   }
 
   /* ---- 6. developer hand-off: inventories, CSV, ticket ---- */

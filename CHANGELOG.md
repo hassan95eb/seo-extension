@@ -1,5 +1,60 @@
 # Changelog
 
+## v2.6.0
+
+Gap-analysis item 8, phase P0: image weight and LCP, measured where it can be measured and
+outlined where it matters. No bytes are fetched, no encoder is bundled, and the permission
+model is untouched — `activeTab`, `scripting`, `storage`, exactly as in v2.1.
+
+### The largest paint, as an element rather than a number
+
+- **`LCP_IMG` / `LCP_TEXT`** name the element the browser actually measured, read from the
+  performance timeline with `buffered: true` so an audit started long after load still gets
+  the initial navigation's entry. Both are `stat`: being the largest paint is a measurement,
+  not a defect, and it must not cost a clean page a point.
+- Because `finalize()` sorts by severity, a `stat` lands near the bottom of the list, which is
+  the wrong place for the most useful line in a performance audit. The LCP finding therefore
+  gets **its own slot in the panel header**, beside the score; clicking it outlines the element
+  on the page. The row stays in the list — the slot is a shortcut to it, not a second answer.
+- **`LCP_LAZY`** (warning) — the one image the page is judged by has been pushed out of the
+  initial fetch queue. **`LCP_NO_PRIORITY`** (notice) — no `fetchpriority="high"`, so the
+  browser has no way to know this image matters more than the rest.
+- The panel and the PDF both say what the number is: this visit's initial navigation, not
+  field data, and on an SPA that has changed route it may no longer be the visual hero.
+
+### Three new image checks, and one correction
+
+- **`IMG_LAZY_ABOVE`** (warning) — `loading="lazy"` inside the first viewport, the complement
+  of the existing below-the-fold check and the more expensive of the two mistakes.
+- **`IMG_LEGACY_FORMAT`** (notice) — JPEG/PNG/GIF where WebP or AVIF would do. Judged on
+  `currentSrc`, so a responsive image is assessed by the file that was really downloaded; an
+  extensionless CDN URL stays unknown rather than being accused on a guess, and SVG passes.
+- **`IMG_NO_SRCSET`** (notice) — images rendered at 400px or wider with no `srcset` and no
+  `<picture>` source. Narrow images are left alone; a 64px avatar has nothing to gain.
+- **`IMG_OVERSIZED` now measures against `devicePixelRatio`**: `naturalWidth > renderedWidth ×
+  DPR × 1.5` instead of a bare `× 2`. **This changes scores on pages that previously audited
+  clean.** The old rule accused correctly-authored 2× assets on a Retina screen and let a
+  genuinely bloated image through on a 1× one. The detail line now carries the ratio it was
+  measured at (`600px → 200px @1×`), so the finding cannot read as a false positive to someone
+  on a different display.
+- The LCP image is never charged twice: when the largest paint turns out to be an
+  above-the-fold lazy image, it is removed from `IMG_LAZY_ABOVE` — which disappears entirely if
+  nothing else was in it — and the score is recomputed from what remains.
+
+### Everywhere else
+
+- The images CSV gains `Format`, `Has srcset` and `fetchpriority` columns, which is the same
+  inventory the new checks read.
+- All wording lives in `i18n.js` in both languages; the engine emits codes, counts and the
+  measured ratio as data.
+- `test/` gains a real image fixture — deterministic noise PNGs generated in `fixtures.js`,
+  because Chrome drops low-entropy images as LCP candidates, so a solid-colour placeholder is
+  never reported as the largest paint. Eighteen new assertions, including that the de-duplication
+  actually removes an element, that the SVG is not called a legacy format, that the panel slot
+  is shown by computed style rather than by attribute, and a second browser context at
+  `deviceScaleFactor: 2` proving the overscale correction corrects something. `clean.html` still
+  scores exactly 100.
+
 ## v2.5.0
 
 Gap-analysis item 2b: raw HTML versus the rendered DOM. SEO Lens now shows what a crawler

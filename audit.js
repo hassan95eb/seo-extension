@@ -133,6 +133,30 @@
     } catch (e) { return false; }
   }
 
+  // The URL the browser actually fetched. `currentSrc` is what srcset resolved to, so a
+  // responsive image is judged by the file that was really downloaded, not by the `src`
+  // fallback that may be a different format entirely.
+  function imgSource(img) {
+    return img.currentSrc || img.getAttribute("src") || "";
+  }
+
+  // Returns a format token only when the URL states one. A CDN path with no extension
+  // stays unknown on purpose: accusing a page of shipping a legacy format on a guess is
+  // worse than saying nothing, and the modern-format check treats "" as "cannot tell".
+  function imgFormat(url) {
+    if (!url) return "";
+    const data = url.match(/^data:image\/([a-z0-9.+-]+)/i);
+    if (data) return data[1].toLowerCase().replace("jpeg", "jpg").replace("svg+xml", "svg");
+    const ext = url.split("?")[0].split("#")[0].match(/\.([a-z0-9]{2,5})$/i);
+    return ext ? ext[1].toLowerCase().replace("jpeg", "jpg") : "";
+  }
+
+  function hasSrcset(img) {
+    if (img.getAttribute("srcset")) return true;
+    const pic = img.parentElement;
+    return !!(pic && pic.tagName === "PICTURE" && pic.querySelector("source[srcset]"));
+  }
+
   function siteBranding() {
     const pick = (sel, attr) => {
       const el = document.querySelector(sel);
@@ -246,6 +270,14 @@
     /* ---------- Images ---------- */
     const imgs = Array.from(doc.images || []);
     const noAlt = [], emptyAlt = [], longAlt = [], noDims = [], oversized = [], noLazy = [], genericName = [];
+    const lazyAbove = [], legacyFormat = [], noSrcset = [];
+    // A 2× asset on a 2× screen is correctly authored, and the same file on a 1× screen
+    // is twice the bytes it needs. The overscale test is therefore against the device
+    // pixel ratio, not against CSS pixels alone.
+    const dpr = window.devicePixelRatio || 1;
+    // Only formats we can name are flagged; webp, avif and svg pass, and an unknown
+    // extension is not evidence of anything.
+    const LEGACY = ["jpg", "png", "gif", "bmp", "tif", "tiff"];
     // Inventory rows for the CSV export. Raw values only — no wording, no verdicts:
     // the same rule that keeps display strings out of this file (hard rule 1) applies
     // to a table just as much as to a finding.
@@ -253,6 +285,10 @@
     imgs.forEach((img) => {
       const vis = isVisible(img);
       const alt = img.getAttribute("alt");
+      const fold = aboveFold(img);
+      const lazy = (img.getAttribute("loading") || "").toLowerCase() === "lazy";
+      const format = imgFormat(imgSource(img));
+      const responsive = hasSrcset(img);
       if (imageRows.length < TABLE_CAP) {
         let abs = img.getAttribute("src") || "";
         try { abs = abs ? new URL(abs, location.href).href : ""; } catch (e) { /* keep raw */ }
@@ -265,8 +301,11 @@
           naturalWidth: img.naturalWidth || 0,
           naturalHeight: img.naturalHeight || 0,
           loading: img.getAttribute("loading") || "",
+          fetchpriority: img.getAttribute("fetchpriority") || "",
+          format,
+          srcset: responsive,
           visible: vis,
-          aboveFold: aboveFold(img),
+          aboveFold: fold,
           path: cssPath(img)
         });
       }
@@ -276,8 +315,15 @@
 
       if (vis && (!img.hasAttribute("width") || !img.hasAttribute("height")) &&
           getComputedStyle(img).aspectRatio === "auto") noDims.push(img);
-      if (img.naturalWidth && img.width > 0 && img.naturalWidth > img.width * 2) oversized.push(img);
-      if (vis && !aboveFold(img) && img.loading !== "lazy") noLazy.push(img);
+      if (img.naturalWidth && img.width > 0 && img.naturalWidth > img.width * dpr * 1.5) oversized.push(img);
+      if (vis && !fold && !lazy) noLazy.push(img);
+      // The complement of the check above, and the more expensive mistake of the two:
+      // a lazy image inside the first viewport is pushed out of the initial fetch queue,
+      // so the element the user is waiting for is the one that starts last.
+      if (vis && fold && lazy) lazyAbove.push(img);
+      if (vis && img.width >= 100 && img.height >= 100 && LEGACY.indexOf(format) > -1) legacyFormat.push(img);
+      // Only wide images: a 64px avatar has nothing to gain from a srcset.
+      if (vis && img.width >= 400 && !responsive && format !== "svg") noSrcset.push(img);
 
       const src = (img.getAttribute("src") || "").split("?")[0].split("/").pop() || "";
       if (/^(img|image|photo|dsc|screenshot|untitled)[\-_ ]?\d*\.(jpe?g|png|webp|gif|avif)$/i.test(src)) genericName.push(img);
@@ -290,11 +336,23 @@
     if (oversized.length) {
       add({
         severity: SEV.WARN, cat: "perf", code: "IMG_OVERSIZED", params: { n: oversized.length },
-        detailRaw: oversized.slice(0, 4).map((i) => `${i.naturalWidth}px → ${Math.round(i.width)}px`).join(" · "),
+        // The ratio is meaningless without the screen it was measured on: the same
+        // finding on a 2× display would otherwise read as a false positive.
+        detailRaw: oversized.slice(0, 4)
+          .map((i) => `${i.naturalWidth}px → ${Math.round(i.width)}px @${dpr}×`).join(" · "),
         els: oversized
       });
     }
     if (noLazy.length) add({ severity: SEV.INFO, cat: "perf", code: "IMG_NO_LAZY", params: { n: noLazy.length }, els: noLazy });
+    if (lazyAbove.length) add({ severity: SEV.WARN, cat: "perf", code: "IMG_LAZY_ABOVE", params: { n: lazyAbove.length }, els: lazyAbove });
+    if (legacyFormat.length) {
+      add({
+        severity: SEV.INFO, cat: "perf", code: "IMG_LEGACY_FORMAT", params: { n: legacyFormat.length },
+        detailRaw: Array.from(new Set(legacyFormat.map((i) => imgFormat(imgSource(i))))).join(" · "),
+        els: legacyFormat
+      });
+    }
+    if (noSrcset.length) add({ severity: SEV.INFO, cat: "perf", code: "IMG_NO_SRCSET", params: { n: noSrcset.length }, els: noSrcset });
     if (genericName.length) add({ severity: SEV.INFO, cat: "images", code: "IMG_GENERIC_NAME", params: { n: genericName.length }, els: genericName });
 
     /* ---------- Links ---------- */
@@ -1092,6 +1150,89 @@
     return finalize(report);
   }
 
+  /* ---------- LCP — the element the visitor is actually waiting for ----------
+   * Every other check in this file reasons about markup. This one reads what the browser
+   * measured, and its whole value is that the answer is an element: the largest paint is
+   * outlined on the page like any other finding, which is something no competitor does
+   * with a Core Web Vital.
+   *
+   * Runs as a third pass for the same reason as the header one — the panel must not wait
+   * for it. `buffered: true` is what makes a late injection work at all: the entry belongs
+   * to the initial navigation, which is also its honest limitation, and the wording in
+   * i18n.js says so rather than leaving the user to discover it.
+   */
+  function lcpEntry(timeoutMs) {
+    return new Promise((resolve) => {
+      let settled = false;
+      const done = (entry) => { if (!settled) { settled = true; resolve(entry || null); } };
+      try {
+        // Chromium keeps the entries in the performance timeline, so an audit started
+        // long after load usually answers without waiting for anything.
+        const buffered = performance.getEntriesByType("largest-contentful-paint");
+        if (buffered && buffered.length) return done(buffered[buffered.length - 1]);
+      } catch (e) { /* fall through to the observer */ }
+      let latest = null;
+      let po = null;
+      try {
+        po = new PerformanceObserver((list) => {
+          const entries = list.getEntries();
+          if (entries.length) latest = entries[entries.length - 1];
+        });
+        po.observe({ type: "largest-contentful-paint", buffered: true });
+      } catch (e) { return done(null); }
+      setTimeout(() => {
+        try { po.disconnect(); } catch (e) { /* ignore */ }
+        done(latest);
+      }, timeoutMs);
+    });
+  }
+
+  // The LCP image is reported by this pass, not twice. An above-the-fold lazy image that
+  // turns out to BE the largest paint is removed from the generic finding, which then
+  // disappears if nothing else was in it; finalize() recomputes the score from what is
+  // left, so the page is charged once for one mistake.
+  function dropElement(issues, code, el) {
+    for (let i = issues.length - 1; i >= 0; i--) {
+      const f = issues[i];
+      if (f.code !== code) continue;
+      f.els = (f.els || []).filter((e) => e !== el);
+      if (!f.els.length) issues.splice(i, 1);
+      else if (f.params && typeof f.params.n === "number") f.params.n = f.els.length;
+    }
+  }
+
+  async function auditLcp(report) {
+    const issues = report.issues;
+    let idc = 0;
+    const add = (o) => issues.push(Object.assign(
+      { id: "l" + ++idc, els: [], params: {}, detailRaw: "" }, o
+    ));
+
+    const entry = await lcpEntry(400);
+    const el = entry && entry.element;
+    if (!el || !el.isConnected) return report;
+    const ms = Math.round(entry.startTime || entry.renderTime || entry.loadTime || 0);
+
+    if (el.tagName !== "IMG") {
+      add({ severity: SEV.STAT, cat: "perf", code: "LCP_TEXT", params: { n: ms }, els: [el] });
+      return finalize(report);
+    }
+
+    add({
+      severity: SEV.STAT, cat: "perf", code: "LCP_IMG", params: { n: ms },
+      detailRaw: snippet(el), els: [el]
+    });
+    if ((el.getAttribute("loading") || "").toLowerCase() === "lazy") {
+      add({ severity: SEV.WARN, cat: "perf", code: "LCP_LAZY", els: [el] });
+      dropElement(issues, "IMG_LAZY_ABOVE", el);
+    }
+    if ((el.getAttribute("fetchpriority") || "").toLowerCase() !== "high") {
+      add({ severity: SEV.INFO, cat: "perf", code: "LCP_NO_PRIORITY", els: [el] });
+    }
+    return finalize(report);
+  }
+
   window.__SEO_LENS_AUDIT__ = run;
   window.__SEO_LENS_AUDIT_HEADERS__ = auditHeaders;
+  window.__SEO_LENS_AUDIT_LCP__ = auditLcp;
 })();

@@ -20,6 +20,12 @@ const ROUTES = {
   "/rtl-good.html": { body: F.RTL_GOOD, headers: {} },
   "/schema.html": { body: F.SCHEMA, headers: {} },
   "/assets.html": { body: F.ASSETS, headers: {} },
+  "/images.html": { body: F.IMAGES, headers: {} },
+  // Real bytes: the LCP pass needs images the browser will actually accept as candidates.
+  "/hero.png": { body: F.HERO_PNG, headers: {}, type: "image/png" },
+  "/thumb.png": { body: F.THUMB_PNG, headers: {}, type: "image/png" },
+  "/twox.png": { body: F.TWOX_PNG, headers: {}, type: "image/png" },
+  "/logo.svg": { body: F.LOGO_SVG, headers: {}, type: "image/svg+xml" },
   "/headers.html": {
     body: F.HEADERS,
     headers: {

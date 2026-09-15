@@ -33,7 +33,9 @@ manifest.json          MV3 config. No content_scripts, no host_permissions — b
 background.js          Service worker: injects on toolbar click, badge, opens report tab.
 i18n.js                ALL display strings, both languages. The only file a new language touches.
 audit.js               Audit engine. Emits code + params only. No human-readable text. Ever.
-                       Two entry points: __SEO_LENS_AUDIT__() sync, __SEO_LENS_AUDIT_HEADERS__() async.
+                       Three entry points: __SEO_LENS_AUDIT__() sync, then two async passes that
+                       merge into the same report — __SEO_LENS_AUDIT_HEADERS__() (network) and
+                       __SEO_LENS_AUDIT_LCP__() (performance timeline).
                        Also builds report.tables — raw image/link inventories for the CSV export.
 content.js             Panel UI, highlight overlay, exports (PDF hand-off, CSV, tickets). Shadow DOM.
 AGENTS.md              A byte-identical copy of this file, for tools that look for that name.
@@ -104,6 +106,14 @@ The rules behind it, if you extend it:
   first assertion in the run.
 - Every check needs a negative fixture too. `rtl-good.html` and `headers-ok.html` exist because
   a check that fires on correct pages is worse than no check.
+- **Anything measured by the browser needs bytes the browser will accept.** Chrome ignores
+  low-entropy images as LCP candidates, so the 1×1 data URI used elsewhere in the fixtures is
+  never reported as the largest paint however large it is displayed. `fixtures.js` generates
+  deterministic *noise* PNGs for that reason — incompressible on purpose, and generated rather
+  than committed so the repo stays free of megabytes of binary test assets.
+- Screen-dependent checks need a second context. The `devicePixelRatio` term in `IMG_OVERSIZED`
+  is verified by auditing the same fixture at `deviceScaleFactor: 2` and asserting the finding
+  is *absent* — a threshold change with no such test is an assertion, not a verification.
 
 ## Release process
 
@@ -127,6 +137,20 @@ file as modified.
 
 ## Current state
 
+- **v2.6.0** shipped: gap-analysis item 8, phase **P0 only** — DOM checks and the LCP element,
+  no byte measurement, no encoder, no manifest change. `__SEO_LENS_AUDIT_LCP__()` reads the
+  largest paint with `buffered: true` and reports it as a `stat` (`LCP_IMG` / `LCP_TEXT`), with
+  `LCP_LAZY` (warning) and `LCP_NO_PRIORITY` (notice) on top of it. Because `finalize()` sorts
+  by severity and a `stat` sinks, the LCP finding also gets **its own slot in the panel header**
+  — that was open question 8h.1, decided this way rather than by inflating its severity. New
+  image checks: `IMG_LAZY_ABOVE`, `IMG_LEGACY_FORMAT`, `IMG_NO_SRCSET`. `IMG_OVERSIZED` now
+  measures `naturalWidth > renderedWidth × devicePixelRatio × 1.5` and carries the ratio in its
+  detail — a deliberate, CHANGELOG-visible scoring change. The LCP image is never counted twice:
+  `dropElement()` removes it from `IMG_LAZY_ABOVE` before `finalize()` recomputes.
+- **v2.5.0** shipped: gap-analysis item 2b, raw HTML versus the rendered DOM. The header pass's
+  GET now reads body and headers together, and the diff reports coverage, H1/H2, JSON-LD, title,
+  canonical and robots-meta differences — `RAW_NOINDEX_REMOVED` being the one that no DOM-only
+  auditor can see.
 - **v2.4.0** shipped: gap-analysis item 2c, the AI crawler robots.txt matrix. `/robots.txt` is
   fetched in parallel with the header request and parsed properly (groups, `*` fallback,
   longest-match with Allow winning ties, `*`/`$`, 500 KiB cap). Blocked **search** crawlers are
@@ -156,21 +180,23 @@ file as modified.
 ## What's next
 
 `docs/gap-analysis.md` holds the researched, prioritised list, based on reading the source of
-ten competing extensions. Items 1, 3, 4, 5, 2a and 2c are done. What remains, in order:
+ten competing extensions. Items 1, 2, 3, 4, 5 and 8-P0 are done. What remains, in order:
 
-1. **Raw HTML vs rendered DOM** — gap-analysis item 2b, the last open part of item 2. AI
-   crawlers do not execute JavaScript, so a JS-heavy page can rank in Google and be invisible
-   to ChatGPT and Perplexity; the same diff catches `noindex` present in the raw HTML and
-   removed by JavaScript, which no DOM-based tool can see. **`auditHeaders()` already performs
-   the fetch this needs** — switch its GET fallback to always read `response.text()` and diff
-   it against the DOM.
-2. **Image weight and LCP** — gap-analysis item 8, and read 8h before writing code: it lists
-   the places the plan and the codebase disagree. P0 is DOM-only and needs no permission
-   change. The images CSV gains a weight column for free once it exists.
-3. **Core Web Vitals with visual attribution** — gap-analysis item 6, now narrowed to INP and
-   CLS because item 8 takes LCP with it. `LayoutShiftAttribution.node` exposes the offending
-   element, which the highlight system can outline. Say plainly in the UI that a single visit
-   is not field data.
+1. **Image weight, measured — item 8 phase P1.** Real bytes for **same-origin** images from
+   `performance.getEntriesByType('resource')`, plus the **Optimize** action: re-encode at the
+   rendered width with `OffscreenCanvas.convertToBlob({type:'image/webp', quality:0.82})`,
+   show measured before/after bytes, hand back the file. Read 8d, 8e and 8h first. Three things
+   decided there and not yet built: **encode in `background.js`**, not in a page-CSP-bound
+   worker (8h.2); **when the size is unknown the UI says "unknown", never "0 KB"** (8e), which
+   is two message codes, not a string built in the engine; and byte values must ride in
+   `params` or `detailRaw` or `serializeReport()` drops them before the PDF ever sees them
+   (8h.3). Same-origin only keeps the permission model untouched — P2, the cross-origin case,
+   is the one that needs `optional_host_permissions` and is a positioning call, not a coding one.
+2. **Core Web Vitals with visual attribution** — gap-analysis item 6, narrowed to INP and CLS
+   because item 8 took LCP with it. `LayoutShiftAttribution.node` exposes the offending element,
+   which the highlight system can outline. The LCP pass added in v2.6.0 is the shape to copy:
+   a third async entry point, `stat` severity, and the honest caveat in the wording.
+3. **Accessibility framed for the European Accessibility Act** — gap-analysis item 7, parked.
 
 Do **not** build: an llms.txt score, or any "schema → AI citation" claim. Google's own docs say
 Search ignores llms.txt and that no special schema is needed for AI features.
@@ -207,5 +233,22 @@ Search ignores llms.txt and that no special schema is needed for AI features.
   (they do not remove the page from AI answers; `Google-Extended` does not touch AI Overviews).
   Only the **search** crawlers — `OAI-SearchBot`, `Claude-SearchBot`, `PerplexityBot` — cost
   anything, because blocking those is the mistake people make by accident.
+- **Being the LCP element is a `stat`, and the panel layout is what carries it.** Under hard
+  rule 5 a measurement costs no points, and `finalize()` sorts strictly by severity, so the most
+  useful line in a performance audit would sit under everything else. Promoting it to `warning`
+  to move it up would charge a clean page for doing nothing wrong. The slot in the panel header
+  solves the visibility problem where it actually lives, and the list row stays where it belongs.
+- **The LCP image is charged once.** An above-the-fold lazy image that turns out to be the
+  largest paint is reported by `LCP_LAZY` and removed from `IMG_LAZY_ABOVE` by `dropElement()`.
+  Two rows and −8 for one mistake is not a stricter audit, it is a wrong one. Any future finding
+  that can overlap with a generic one inherits this obligation.
+- **Overscale is measured against `devicePixelRatio`, and the detail says so.** A 2× asset on a
+  2× screen is correct authoring; the same file on a 1× screen is twice the bytes it needs. The
+  old bare `× 2` got both cases wrong, in opposite directions. The ratio is in `detailRaw`
+  because the same finding on a different display would otherwise read as a false positive.
+- **A format is only named when the URL names it.** `imgFormat()` returns "" for an
+  extensionless CDN path and `IMG_LEGACY_FORMAT` skips it. Guessing would produce confident
+  accusations on exactly the sites most likely to be audited, and `currentSrc` is used rather
+  than `src` so a responsive image is judged by the file that was actually downloaded.
 - **Ambiguous retired types are `info`, not `warning`.** `Course` and `LearningResource` still
   have non-rich-result uses, so they sit in `DEPRECATED`; only unambiguous ones cost 4 points.
