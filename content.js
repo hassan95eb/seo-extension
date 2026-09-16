@@ -23,6 +23,34 @@
   let tracked = [], rafPending = false;
   let activeIssueId = null, highlightAllOn = false, filter = "all";
   let lang = "fa";
+
+  // Item 8 phase P1 — per-element state for the Optimize action, keyed by the live <img>
+  // so it survives a full renderList() re-render (which happens on every audit pass and
+  // every panel interaction). Not part of `report`: it is interactive session state, not
+  // an audit finding, and per 8h.3 it is deliberately never folded back into the report
+  // object the PDF export snapshots — the PDF reflects what the audit measured, not
+  // what was fixed afterwards in the panel.
+  // status: "idle" | "busy" | "done" | "nosave" | "error"
+  const optimizeState = new WeakMap();
+
+  // chrome.runtime.sendMessage does not structured-clone a Blob or an ArrayBuffer between
+  // a content script and the service worker — both arrive on the other side JSON-flattened
+  // into `{}` — so the image crosses as base64, the one payload shape that survives intact.
+  function blobToB64(blob) {
+    return blob.arrayBuffer().then((ab) => {
+      const bytes = new Uint8Array(ab);
+      let s = "";
+      const CHUNK = 0x8000;
+      for (let i = 0; i < bytes.length; i += CHUNK) s += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+      return btoa(s);
+    });
+  }
+  function b64ToBlob(b64, mime) {
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new Blob([bytes], { type: mime || "application/octet-stream" });
+  }
   // Closes the export menu. Re-assigned by renderChrome(); a no-op before the first render.
   let closeExportMenu = () => {};
 
@@ -214,8 +242,83 @@
         if (token !== auditToken || report !== target) return;
         pushScore();
         renderAll();
+        // Chained rather than fired alongside the LCP pass: the weight pass reads
+        // OPTIMIZABLE_CODES off report.issues, and LCP_IMG — one of the three codes —
+        // does not exist until this pass has already added it.
+        runWeightAudit();
       })
       .catch((e) => console.debug("SEO Lens lcp:", e));
+  }
+
+  // Item 8 phase P1 — real transferred bytes for same-origin images already flagged by
+  // IMG_OVERSIZED, IMG_LEGACY_FORMAT or LCP_IMG. Free: performance.getEntriesByType
+  // already has the answer, since the browser fetched these images to paint the page.
+  function runWeightAudit() {
+    if (!report || !window.__SEO_LENS_AUDIT_WEIGHT__) return;
+    const token = auditToken;
+    const target = report;
+    window.__SEO_LENS_AUDIT_WEIGHT__(report)
+      .then(() => {
+        if (token !== auditToken || report !== target) return;
+        renderAll();
+      })
+      .catch((e) => console.debug("SEO Lens weight:", e));
+  }
+
+  // Item 8 phase P1 — the Optimize action. Same-origin only: `fetch(srcUrl)` from a
+  // content script behaves exactly like the page's own fetch for same-origin resources,
+  // so there is no CORS step to negotiate and no permission this needs beyond activeTab.
+  // Re-encoding itself happens in the service worker (see background.js for why), one
+  // image per click, never in a batch — hard rule 6 again: the audited page is never
+  // touched, and nothing here alters it.
+  function startOptimize(issue, idx) {
+    const el = issue && issue.els && issue.els[idx];
+    if (!el || !el.isConnected) return;
+    const prev = optimizeState.get(el);
+    if (prev && prev.status === "busy") return;
+    if (prev && prev.blobUrl) { try { URL.revokeObjectURL(prev.blobUrl); } catch (e) { /* ignore */ } }
+    optimizeState.set(el, { status: "busy" });
+    renderList();
+
+    let srcUrl = "";
+    try { srcUrl = new URL(el.currentSrc || el.getAttribute("src") || "", location.href).href; }
+    catch (e) { optimizeState.set(el, { status: "error" }); renderList(); return; }
+
+    const rect = el.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    const width = Math.max(1, Math.round((rect.width || el.naturalWidth || 1) * dpr));
+
+    fetch(srcUrl)
+      .then((r) => { if (!r.ok) throw new Error("fetch failed: " + r.status); return r.blob(); })
+      .then((blob) => blobToB64(blob).then((b64) => ({ b64, mime: blob.type })))
+      .then(({ b64, mime }) => new Promise((resolve, reject) => {
+        try {
+          chrome.runtime.sendMessage({ type: "SEO_LENS_OPTIMIZE", b64, mime, width }, (response) => {
+            if (chrome.runtime.lastError) { reject(new Error(chrome.runtime.lastError.message)); return; }
+            resolve(response);
+          });
+        } catch (e) { reject(e); }
+      }))
+      .then((res) => {
+        if (!el.isConnected) return; // the page moved on while this was in flight
+        if (!res || !res.ok) throw new Error((res && res.error) || "optimize failed");
+        const { beforeBytes, afterBytes } = res;
+        if (!(afterBytes < beforeBytes)) {
+          optimizeState.set(el, { status: "nosave", before: beforeBytes, after: afterBytes });
+        } else {
+          const blobUrl = URL.createObjectURL(b64ToBlob(res.b64, res.mime));
+          const base = (srcUrl.split("/").pop() || "image").split("?")[0].replace(/\.[a-z0-9]+$/i, "");
+          optimizeState.set(el, {
+            status: "done", before: beforeBytes, after: afterBytes,
+            blobUrl, filename: `${base}-optimized.webp`
+          });
+        }
+        renderList();
+      })
+      .catch((e) => {
+        console.debug("SEO Lens optimize:", e);
+        if (el.isConnected) { optimizeState.set(el, { status: "error" }); renderList(); }
+      });
   }
 
   /* ---------- report export ---------- */
@@ -633,6 +736,39 @@
     slot.hidden = false;
   }
 
+  // Item 8 phase P1 — one row of the Optimize UI, next to a single image's path/snippet.
+  // `p.bytes` is the resource-timing measurement from the async weight pass (audit.js);
+  // `state` is this element's own interactive history, kept in optimizeState across
+  // re-renders. The two are independent on purpose: bytes can be null (8e — "unknown",
+  // never "0 KB") while the button is still fully usable, because clicking Optimize gets
+  // its own authoritative before/after reading regardless of what resource timing knew.
+  function renderOptimizeRow(p, idx, el) {
+    const state = el ? (optimizeState.get(el) || { status: "idle" }) : { status: "idle" };
+    const badge = p.bytes == null
+      ? `<span class="sl-weight unknown">${esc(t("weightUnknown"))}</span>`
+      : `<span class="sl-weight">${esc(t("weightLabel", { n: Math.round(p.bytes / 1024) }))}</span>`;
+
+    if (state.status === "busy") {
+      return `<div class="sl-optrow">${badge}<span class="sl-opt-status">${esc(t("optimizing"))}</span></div>`;
+    }
+    if (state.status === "done") {
+      const before = Math.round(state.before / 1024), after = Math.round(state.after / 1024);
+      const pct = state.before > 0 ? Math.round((1 - state.after / state.before) * 100) : 0;
+      return `<div class="sl-optrow">` +
+        `<span class="sl-opt-status">${esc(t("optimizeResult", { before, after, pct }))}</span>` +
+        `<a class="sl-opt-dl" href="${esc(state.blobUrl)}" download="${esc(state.filename)}">${esc(t("optimizeDownload"))}</a>` +
+        `</div>`;
+    }
+    if (state.status === "nosave") {
+      return `<div class="sl-optrow">${badge}<span class="sl-opt-status">${esc(t("optimizeNoSaving"))}</span></div>`;
+    }
+    if (state.status === "error") {
+      return `<div class="sl-optrow">${badge}<span class="sl-opt-status">${esc(t("optimizeFailed"))}</span>` +
+        `<button class="sl-opt" data-idx="${idx}">${esc(t("optimizeRetry"))}</button></div>`;
+    }
+    return `<div class="sl-optrow">${badge}<button class="sl-opt" data-idx="${idx}">${esc(t("optimize"))}</button></div>`;
+  }
+
   function renderList() {
     if (!shadow || !report) return;
     const body = shadow.querySelector("#sl-body");
@@ -653,11 +789,16 @@
       // must never reorder against the panel's own direction. bdi + dir="auto" gives it
       // its own embedding level regardless of which language the UI is in.
       const allPaths = i.paths || [];
-      const pathRow = (p) =>
+      // Item 8 phase P1: p.bytes is undefined for any row that is not a same-origin
+      // image on IMG_OVERSIZED / IMG_LEGACY_FORMAT / LCP_IMG (see finalize() in
+      // audit.js) — everything else renders exactly as it did before this feature.
+      const optimizable = allPaths.some((p) => p.bytes !== undefined);
+      const pathRow = (p, idx) =>
         `<li><span class="sl-path"><bdi>${esc(p.path)}</bdi></span>` +
-        `${p.text ? `<span class="sl-snip"><bdi dir="auto">${esc(p.text)}</bdi></span>` : ""}</li>`;
-      const shown = allPaths.slice(0, PATHS_PREVIEW).map(pathRow).join("");
-      const restRows = allPaths.slice(PATHS_PREVIEW).map(pathRow).join("");
+        `${p.text ? `<span class="sl-snip"><bdi dir="auto">${esc(p.text)}</bdi></span>` : ""}` +
+        `${p.bytes !== undefined ? renderOptimizeRow(p, idx, i.els[idx]) : ""}</li>`;
+      const shown = allPaths.slice(0, PATHS_PREVIEW).map((p, idx) => pathRow(p, idx)).join("");
+      const restRows = allPaths.slice(PATHS_PREVIEW).map((p, idx) => pathRow(p, idx + PATHS_PREVIEW)).join("");
       const restCount = allPaths.length - PATHS_PREVIEW;
       const targets = shown
         ? `<ul class="sl-targets">${shown}</ul>` +
@@ -684,6 +825,7 @@
           ${detail ? `<p class="sl-desc">${detail}</p>` : ""}
           ${msg.f ? `<p class="sl-fix"><b>${esc(t("fixLabel"))}</b> ${esc(msg.f)}</p>` : ""}
           ${targets}
+          ${optimizable ? `<p class="sl-optnote">${esc(t("optimizeNote"))}</p>` : ""}
           <div class="sl-acts">
             ${canHl
               ? `<button class="sl-hl">${esc(t("showOnPage"))}</button>`
@@ -732,6 +874,17 @@
           body.querySelectorAll(".sl-item").forEach((n) => n.classList.toggle("active", n === node));
         });
       }
+      // One button per image row, not one per finding — a finding can flag several
+      // images, and 8d's Optimize action is per image, so every ".sl-opt" in this item
+      // needs its own listener keyed by its own data-idx.
+      node.querySelectorAll(".sl-opt").forEach((optBtn) => {
+        optBtn.addEventListener("click", (e) => {
+          e.stopPropagation();
+          if (issue) startOptimize(issue, Number(optBtn.dataset.idx));
+        });
+      });
+      // The download anchor needs no listener — it is a real <a download> pointed at an
+      // object URL already created in optimizeState, same mechanism as the CSV export.
     });
   }
 
@@ -862,6 +1015,20 @@
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis;unicode-bidi:isolate;}
   .sl-snip{color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;unicode-bidi:isolate;}
   .sl-title,.sl-desc,.sl-fix{unicode-bidi:isolate;}
+  /* Item 8 phase P1 — weight badge + Optimize action, one row per flagged image. */
+  .sl-optrow{display:flex;align-items:center;gap:6px;margin-top:3px;padding-top:3px;
+    border-top:1px dashed #1c2841;flex-wrap:wrap;}
+  .sl-weight{font-size:10px;color:#94a3b8;font-family:ui-monospace,Menlo,Consolas,monospace;
+    unicode-bidi:isolate;}
+  .sl-weight.unknown{color:#64748b;font-style:italic;font-family:inherit;}
+  .sl-opt-status{font-size:10px;color:#94a3b8;unicode-bidi:isolate;}
+  .sl-opt{background:#0e7490;border:none;color:#fff;padding:3px 9px;border-radius:6px;cursor:pointer;
+    font-size:10.5px;font-family:inherit;font-weight:600;margin-inline-start:auto;}
+  .sl-opt:hover{background:#0891b2;}
+  .sl-opt-dl{background:#16a34a;color:#fff;padding:3px 9px;border-radius:6px;cursor:pointer;
+    font-size:10.5px;font-family:inherit;font-weight:600;text-decoration:none;margin-inline-start:auto;}
+  .sl-opt-dl:hover{background:#15803d;}
+  .sl-optnote{margin:0 0 8px;font-size:10px;color:#64748b;line-height:1.7;}
   .sl-hl{background:#7c3aed;border:none;color:#fff;padding:6px 12px;border-radius:7px;cursor:pointer;
     font-size:11.5px;font-family:inherit;font-weight:600;}
   .sl-hl:hover{background:#6d28d9;}

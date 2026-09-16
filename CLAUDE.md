@@ -137,6 +137,28 @@ file as modified.
 
 ## Current state
 
+- **v2.7.0** built: gap-analysis item 8, phase **P1** — real bytes and the **Optimize**
+  action, same-origin only. A fourth async entry point, `__SEO_LENS_AUDIT_WEIGHT__()`,
+  reads `performance.getEntriesByType('resource')` for same-origin images already flagged
+  by `IMG_OVERSIZED`, `IMG_LEGACY_FORMAT` or `LCP_IMG`; the byte value (or `null` for
+  unknown, never `0`) rides on `paths[].bytes`, which was already whitelisted by
+  `serializeReport()` before this feature existed, so the panel and the PDF both show it
+  for free. Each optimizable image row gets an **Optimize** button: the content script
+  fetches the same-origin file (no CORS step, no new permission) and hands it to
+  `background.js` as **base64** — a `Blob`/`ArrayBuffer` does not survive
+  `chrome.runtime.sendMessage`'s structured clone between a content script and a service
+  worker, verified against a real MV3 service worker rather than assumed. Encoding
+  (`createImageBitmap` → `OffscreenCanvas` → `convertToBlob('image/webp', 0.82)`) happens
+  in the service worker, not the content script — 8h.2's answer, because a content
+  script's own `Worker` would be subject to the *audited page's* CSP. Optimize state
+  (busy/done/no-saving/failed) lives in the panel only, keyed to the live element, and is
+  never written back into the report object: the PDF reflects what was measured, not what
+  was fixed afterwards in an open panel — the other half of 8h.3. No manifest change;
+  `activeTab`, `scripting`, `storage` only. Full test coverage written and passing —
+  `npm test` and `npm run report` both green, including the weight pass, the cross-origin
+  "stays unknown" case, and the full Optimize click-flow (busy → done / no-saving /
+  error → retry). Still needs the branch → commit → tag → release cycle described above;
+  the code is complete and tested but nothing has shipped to GitHub yet.
 - **v2.6.0** shipped: gap-analysis item 8, phase **P0 only** — DOM checks and the LCP element,
   no byte measurement, no encoder, no manifest change. `__SEO_LENS_AUDIT_LCP__()` reads the
   largest paint with `buffered: true` and reports it as a `stat` (`LCP_IMG` / `LCP_TEXT`), with
@@ -180,23 +202,17 @@ file as modified.
 ## What's next
 
 `docs/gap-analysis.md` holds the researched, prioritised list, based on reading the source of
-ten competing extensions. Items 1, 2, 3, 4, 5 and 8-P0 are done. What remains, in order:
+ten competing extensions. Items 1, 2, 3, 4, 5, 8-P0 and 8-P1 are done. What remains, in order:
 
-1. **Image weight, measured — item 8 phase P1.** Real bytes for **same-origin** images from
-   `performance.getEntriesByType('resource')`, plus the **Optimize** action: re-encode at the
-   rendered width with `OffscreenCanvas.convertToBlob({type:'image/webp', quality:0.82})`,
-   show measured before/after bytes, hand back the file. Read 8d, 8e and 8h first. Three things
-   decided there and not yet built: **encode in `background.js`**, not in a page-CSP-bound
-   worker (8h.2); **when the size is unknown the UI says "unknown", never "0 KB"** (8e), which
-   is two message codes, not a string built in the engine; and byte values must ride in
-   `params` or `detailRaw` or `serializeReport()` drops them before the PDF ever sees them
-   (8h.3). Same-origin only keeps the permission model untouched — P2, the cross-origin case,
-   is the one that needs `optional_host_permissions` and is a positioning call, not a coding one.
-2. **Core Web Vitals with visual attribution** — gap-analysis item 6, narrowed to INP and CLS
+1. **Core Web Vitals with visual attribution** — gap-analysis item 6, narrowed to INP and CLS
    because item 8 took LCP with it. `LayoutShiftAttribution.node` exposes the offending element,
    which the highlight system can outline. The LCP pass added in v2.6.0 is the shape to copy:
-   a third async entry point, `stat` severity, and the honest caveat in the wording.
-3. **Accessibility framed for the European Accessibility Act** — gap-analysis item 7, parked.
+   a new async entry point, `stat` severity, and the honest caveat in the wording.
+2. **Accessibility framed for the European Accessibility Act** — gap-analysis item 7, parked.
+3. **Image weight, item 8 phase P2** — cross-origin bytes, platform-specific advice
+   ("install this plugin" rather than "convert your images to WebP"), a drag-and-drop entry
+   point. Gated on the `optional_host_permissions` decision in 8f, which is a positioning call
+   deliberately left unmade through P0 and P1. Not scheduled; read 8f and 8h.5 before starting.
 
 Do **not** build: an llms.txt score, or any "schema → AI citation" claim. Google's own docs say
 Search ignores llms.txt and that no special schema is needed for AI features.

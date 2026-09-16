@@ -329,8 +329,31 @@ const IMAGES = `<!DOCTYPE html>
 </body>
 </html>`;
 
+// Item 8 phase P1: one image on a different origin (a different port is a different
+// origin), oversized and in a legacy format, so it fires the same two findings as
+// thumb.png does but must never get a byte reading — 8f's whole point, that reading
+// real bytes for a cross-origin resource needs host permissions this extension does not
+// have, so the weight pass has to actually check origin and not just "is it an IMG".
+const REMOTE_PNG = noisePng(600, 450); // displayed at 200×150, same shape as thumb.png
+const CROSS_ORIGIN = `<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A page whose one image lives on a different origin</title>
+<meta name="description" content="This fixture exists to prove the weight pass in item 8 phase P1 leaves a cross-origin image at unknown rather than reading its bytes.">
+<link rel="canonical" href="https://localhost:8443/cross-origin.html">
+</head>
+<body>
+<h1>Cross-origin image</h1>
+<img id="remote" src="https://localhost:8446/remote.png" alt="A remotely hosted photograph" width="200" height="150">
+<p style="max-width:520px">${"This page exists only to host one image from a different origin. ".repeat(10)}</p>
+</body>
+</html>`;
+
 module.exports = {
   CLEAN, RTL_BROKEN, RTL_GOOD, SCHEMA, HEADERS, RAW_JS_ONLY, RAW_PARTIAL,
   RAW_ROBOTS_REMOVED, RAW_ROBOTS_CHANGED, ASSETS, ROBOTS_TXT,
-  IMAGES, HERO_PNG, THUMB_PNG, TWOX_PNG, LOGO_SVG
+  IMAGES, HERO_PNG, THUMB_PNG, TWOX_PNG, LOGO_SVG,
+  CROSS_ORIGIN, REMOTE_PNG
 };

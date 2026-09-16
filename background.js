@@ -85,3 +85,62 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
     });
   }
 });
+
+/* ---------- Optimize — item 8 phase P1 ----------
+ * Why this lives here rather than in the content script: the original plan called for a
+ * dedicated Worker so encoding never touches the page's main thread, but a content script
+ * spinning up `new Worker(blobURL)` is subject to the AUDITED PAGE's CSP (worker-src /
+ * child-src) and fails silently on exactly the well-configured sites most likely to be
+ * audited. The service worker has no page CSP, already has OffscreenCanvas and
+ * createImageBitmap, and keeps the audited page untouched either way (hard rule 6).
+ *
+ * The image crosses into this context as base64, not as a Blob or ArrayBuffer. Both were
+ * tried first: chrome.runtime.sendMessage does not structured-clone either one between a
+ * content script and a service worker — they arrive JSON-flattened into `{}` — so the
+ * only payload shape that survives the trip intact is a plain string.
+ */
+function b64ToBlob(b64, mime) {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type: mime || "application/octet-stream" });
+}
+
+function blobToB64(blob) {
+  return blob.arrayBuffer().then((ab) => {
+    const bytes = new Uint8Array(ab);
+    let s = "";
+    // String.fromCharCode.apply chokes on very large arrays passed in one call;
+    // chunking keeps this working for images well past what this feature targets.
+    const CHUNK = 0x8000;
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+      s += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+    }
+    return btoa(s);
+  });
+}
+
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (!msg || msg.type !== "SEO_LENS_OPTIMIZE") return;
+  (async () => {
+    try {
+      const srcBlob = b64ToBlob(msg.b64, msg.mime);
+      const beforeBytes = srcBlob.size;
+      const bitmap = await createImageBitmap(srcBlob);
+      // The rendered width the audit already measured, never the natural size — 8d's
+      // whole point is serving the image at the size it is actually displayed at.
+      // Height follows the bitmap's own aspect ratio rather than a second measurement,
+      // so a mismatched width/height pair on the page cannot distort the output.
+      const width = Math.max(1, Math.round(msg.width || bitmap.width));
+      const height = Math.max(1, Math.round(width * bitmap.height / bitmap.width));
+      const canvas = new OffscreenCanvas(width, height);
+      canvas.getContext("2d").drawImage(bitmap, 0, 0, width, height);
+      const outBlob = await canvas.convertToBlob({ type: "image/webp", quality: 0.82 });
+      const outB64 = await blobToB64(outBlob);
+      sendResponse({ ok: true, beforeBytes, afterBytes: outBlob.size, mime: "image/webp", b64: outB64 });
+    } catch (e) {
+      sendResponse({ ok: false, error: String((e && e.message) || e) });
+    }
+  })();
+  return true; // keep the message channel open for the async sendResponse above
+});

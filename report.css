@@ -150,6 +150,10 @@ body {
 }
 .f-els .p { font-family: ui-monospace, Menlo, Consolas, monospace; color: #0369a1; direction: ltr; unicode-bidi: isolate; }
 .f-els .s { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 45%; unicode-bidi: isolate; }
+/* Item 8 phase P1 — the measured "before" weight on a flagged image, when the browser
+   gave a real answer; italic "unknown" (8e) rather than a confident zero when it did not. */
+.f-els .w { font-size: 9.5px; color: var(--muted); font-family: ui-monospace, Menlo, Consolas, monospace; white-space: nowrap; flex: none; }
+.f-els .w.unknown { font-style: italic; }
 .f-els-rest { margin-top: 3px; }
 .f-more-btn {
   display: block; width: 100%; margin: 4px 0 0; padding: 6px 10px;

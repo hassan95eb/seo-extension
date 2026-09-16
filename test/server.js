@@ -21,6 +21,7 @@ const ROUTES = {
   "/schema.html": { body: F.SCHEMA, headers: {} },
   "/assets.html": { body: F.ASSETS, headers: {} },
   "/images.html": { body: F.IMAGES, headers: {} },
+  "/cross-origin.html": { body: F.CROSS_ORIGIN, headers: {} },
   // Real bytes: the LCP pass needs images the browser will actually accept as candidates.
   "/hero.png": { body: F.HERO_PNG, headers: {}, type: "image/png" },
   "/thumb.png": { body: F.THUMB_PNG, headers: {}, type: "image/png" },
@@ -68,6 +69,11 @@ const ERR_ROBOTS_ROUTES = {
   "/page.html": { body: F.HEADERS, headers: {} }
 };
 
+// A second image origin, for cross-origin.html — item 8 phase P1's "leave it unknown" case.
+const CROSS_ORIGIN_ROUTES = {
+  "/remote.png": { body: F.REMOTE_PNG, headers: {}, type: "image/png" }
+};
+
 function start(cert, key, port, routes) {
   const table = routes || ROUTES;
   const server = https.createServer({ cert, key }, (req, res) => {
@@ -82,13 +88,14 @@ function start(cert, key, port, routes) {
   return new Promise((r) => server.listen(port, () => r(server)));
 }
 
-module.exports = { start, ROUTES, HTML_ROBOTS_ROUTES, ERR_ROBOTS_ROUTES };
+module.exports = { start, ROUTES, HTML_ROBOTS_ROUTES, ERR_ROBOTS_ROUTES, CROSS_ORIGIN_ROUTES };
 
 if (require.main === module) {
   const cert = fs.readFileSync("cert.pem"), key = fs.readFileSync("key.pem");
   Promise.all([
     start(cert, key, 8443),
     start(cert, key, 8444, HTML_ROBOTS_ROUTES),
-    start(cert, key, 8445, ERR_ROBOTS_ROUTES)
-  ]).then(() => console.log("listening on https://localhost:8443 (+8444, +8445)"));
+    start(cert, key, 8445, ERR_ROBOTS_ROUTES),
+    start(cert, key, 8446, CROSS_ORIGIN_ROUTES)
+  ]).then(() => console.log("listening on https://localhost:8443 (+8444, +8445, +8446)"));
 }

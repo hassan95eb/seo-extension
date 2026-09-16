@@ -5,7 +5,8 @@
 const fs = require("fs");
 const path = require("path");
 const { chromium } = require("playwright");
-const { start, HTML_ROBOTS_ROUTES, ERR_ROBOTS_ROUTES } = require("./server");
+const { start, HTML_ROBOTS_ROUTES, ERR_ROBOTS_ROUTES, CROSS_ORIGIN_ROUTES } = require("./server");
+const { THUMB_PNG } = require("./fixtures");
 
 const REPO = process.env.REPO || path.join(__dirname, "..");
 const read = (f) => fs.readFileSync(path.join(REPO, f), "utf8");
@@ -18,25 +19,29 @@ function check(name, ok, detail) {
 
 // `withAsync` runs both asynchronous passes — headers/raw HTML and LCP — the way the panel
 // does. Called with false it asserts on the synchronous first paint alone, which is how the
-// LCP de-duplication is shown to actually remove something.
-async function auditPage(page, url, wantHeaders) {
+// LCP de-duplication is shown to actually remove something. `wantWeight` chains the item 8
+// phase P1 pass after LCP, the same order runLcpAudit() uses in content.js and for the same
+// reason: LCP_IMG has to exist before the weight pass can find it among OPTIMIZABLE_CODES.
+async function auditPage(page, url, wantHeaders, wantWeight) {
   await page.goto(url, { waitUntil: "load" });
   await page.addScriptTag({ content: read("i18n.js") });
   await page.addScriptTag({ content: read("audit.js") });
-  return page.evaluate(async (withHeaders) => {
+  return page.evaluate(async ({ withHeaders, withWeight }) => {
     const r = window.__SEO_LENS_AUDIT__();
     if (withHeaders) {
       await window.__SEO_LENS_AUDIT_HEADERS__(r);
       await window.__SEO_LENS_AUDIT_LCP__(r);
     }
+    if (withWeight) await window.__SEO_LENS_AUDIT_WEIGHT__(r);
     return {
       score: r.score,
       counts: r.counts,
       issues: r.issues.map((i) => ({
-        code: i.code, severity: i.severity, params: i.params, detailRaw: i.detailRaw, count: i.count
+        code: i.code, severity: i.severity, params: i.params, detailRaw: i.detailRaw,
+        count: i.count, paths: i.paths
       }))
     };
-  }, wantHeaders);
+  }, { withHeaders: wantHeaders, withWeight: wantWeight });
 }
 
 const codes = (r) => r.issues.map((i) => i.code);
@@ -80,6 +85,28 @@ async function openPanel(page, url, lang) {
   await page.waitForTimeout(1200);
 }
 
+// Item 8 phase P1 — stubs chrome.runtime.sendMessage the way the real service worker's
+// async sendResponse behaves: the callback fires after `delayMs`, carrying either the
+// given response or, for `{ __lastError: "..." }`, a lastError the way a torn-down
+// message channel actually reports (startOptimize() in content.js checks lastError
+// inside the callback, not as a rejected promise, so this has to match that shape).
+async function mockOptimize(page, response, delayMs) {
+  await page.evaluate(({ response, delayMs }) => {
+    window.chrome.runtime.sendMessage = (msg, cb) => {
+      setTimeout(() => {
+        if (response && response.__lastError) {
+          window.chrome.runtime.lastError = { message: response.__lastError };
+          cb(undefined);
+          window.chrome.runtime.lastError = undefined;
+        } else {
+          window.chrome.runtime.lastError = undefined;
+          cb(response);
+        }
+      }, delayMs || 0);
+    };
+  }, { response, delayMs });
+}
+
 (async () => {
   const cert = fs.readFileSync(path.join(__dirname, "cert.pem"));
   const key = fs.readFileSync(path.join(__dirname, "key.pem"));
@@ -87,6 +114,8 @@ async function openPanel(page, url, lang) {
   // robots.txt lives at the origin, so the two degenerate responses need their own.
   const htmlRobots = await start(cert, key, 8444, HTML_ROBOTS_ROUTES);
   const errRobots = await start(cert, key, 8445, ERR_ROBOTS_ROUTES);
+  // A second image origin, purely for item 8 phase P1's cross-origin fixture.
+  const crossOrigin = await start(cert, key, 8446, CROSS_ORIGIN_ROUTES);
   const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || undefined });
   const ctx = await browser.newContext({ ignoreHTTPSErrors: true, viewport: { width: 1280, height: 900 } });
   const page = await ctx.newPage();
@@ -287,6 +316,31 @@ async function openPanel(page, url, lang) {
     find(r2, "IMG_OVERSIZED") ? find(r2, "IMG_OVERSIZED").detailRaw : "no finding, as intended");
   await hidpi.close();
 
+  /* ---- 4c. image weight — item 8 phase P1 ---- */
+  console.log("\nimages.html — weight pass");
+  const rw = await auditPage(page, `${B}/images.html`, true, true);
+  const lcpBytes = find(rw, "LCP_IMG").paths[0].bytes;
+  check("the LCP image gets a real byte reading, not null or 0",
+    typeof lcpBytes === "number" && lcpBytes > 0, `${lcpBytes} bytes`);
+  const overW = find(rw, "IMG_OVERSIZED");
+  check("every oversized image gets a byte reading",
+    overW.paths.every((p) => typeof p.bytes === "number" && p.bytes > 0),
+    overW.paths.map((p) => p.bytes).join(", "));
+  const legacyW = find(rw, "IMG_LEGACY_FORMAT");
+  check("every legacy-format image gets a byte reading",
+    legacyW.paths.every((p) => typeof p.bytes === "number" && p.bytes > 0),
+    legacyW.paths.map((p) => p.bytes).join(", "));
+  const srcsetW = find(rw, "IMG_NO_SRCSET");
+  check("a finding outside OPTIMIZABLE_CODES carries no bytes field at all",
+    srcsetW.paths.every((p) => p.bytes === undefined));
+
+  console.log("\ncross-origin.html — weight pass leaves it unknown");
+  const rx = await auditPage(page, `${B}/cross-origin.html`, true, true);
+  const overX = find(rx, "IMG_OVERSIZED");
+  check("the finding still fires for a cross-origin image", !!overX && overX.count === 1);
+  check("but its bytes are undefined, never a real number or a confident zero",
+    overX.paths[0].bytes === undefined, String(overX.paths[0].bytes));
+
   /* ---- 5. panel renders, both languages ---- */
   console.log("\npanel");
   for (const [url, lang, name] of [[`${B}/rtl-broken.html`, "fa", "panel-fa"], [`${B}/schema.html`, "en", "panel-en"]]) {
@@ -356,6 +410,114 @@ async function openPanel(page, url, lang) {
   await page.screenshot({ path: shot });
   console.log(`        screenshot: ${shot}`);
   }
+
+  /* ---- 5c. the Optimize action — item 8 phase P1 ---- */
+  console.log("\nOptimize action");
+  await openPanel(page, `${B}/images.html`, "en");
+
+  // One finding with at least two optimizable images (each path gets its own button,
+  // its own state) and a distinct finding with exactly one, so the retry path can be
+  // exercised without disturbing the multi-image scenarios above it.
+  const idxInfo = await page.evaluate(() => {
+    const items = Array.from(window.__panel().querySelectorAll(".sl-item"));
+    const counts = items.map((n) => n.querySelectorAll(".sl-opt").length);
+    const multi = counts.findIndex((c) => c >= 2);
+    const single = counts.findIndex((c) => c === 1);
+    if (multi > -1) items[multi].querySelector(".sl-row").click();
+    if (single > -1 && single !== multi) items[single].querySelector(".sl-row").click();
+    return { multi, single, counts };
+  });
+  check("a finding with at least two optimizable images exists to test against",
+    idxInfo.multi > -1, JSON.stringify(idxInfo.counts));
+  check("a distinct single-image finding exists for the retry scenario",
+    idxInfo.single > -1 && idxInfo.single !== idxInfo.multi, JSON.stringify(idxInfo));
+
+  const badge = await page.evaluate((idx) => {
+    const w = window.__panel().querySelectorAll(".sl-item")[idx].querySelector(".sl-weight");
+    return w ? { text: w.textContent, unknown: w.classList.contains("unknown") } : null;
+  }, idxInfo.multi);
+  check("the row shows a real byte weight before anything is clicked",
+    !!badge && !badge.unknown && /\d/.test(badge.text), badge && badge.text);
+
+  // Success: a busy state right after the click (synchronous, before the mocked
+  // response arrives), then a download link once it resolves.
+  await mockOptimize(page, {
+    ok: true, beforeBytes: 200000, afterBytes: 50000, mime: "image/webp",
+    b64: Buffer.from("fake-webp-bytes").toString("base64")
+  }, 60);
+  await page.evaluate((idx) => {
+    window.__panel().querySelectorAll(".sl-item")[idx].querySelectorAll(".sl-opt")[0].click();
+  }, idxInfo.multi);
+  const busy = await page.evaluate((idx) => {
+    const s = window.__panel().querySelectorAll(".sl-item")[idx].querySelectorAll(".sl-opt-status")[0];
+    return s ? s.textContent : null;
+  }, idxInfo.multi);
+  check("clicking Optimize shows a busy state right away", (busy || "").indexOf("Optimizing") > -1, busy);
+
+  await page.waitForFunction((idx) => {
+    return !!window.__panel().querySelectorAll(".sl-item")[idx].querySelector(".sl-opt-dl");
+  }, idxInfo.multi, { timeout: 5000 });
+  const done = await page.evaluate((idx) => {
+    const item = window.__panel().querySelectorAll(".sl-item")[idx];
+    const a = item.querySelector(".sl-opt-dl");
+    const status = item.querySelector(".sl-opt-status");
+    return { href: a.getAttribute("href"), download: a.getAttribute("download"), status: status ? status.textContent : "" };
+  }, idxInfo.multi);
+  check("a successful optimize renders a download link to a blob URL", done.href.indexOf("blob:") === 0, done.href);
+  check("the filename is derived from the source and marked optimized",
+    /-optimized\.webp$/.test(done.download), done.download);
+  check("the status line reports the before/after saving", /\d+ KB.*\d+ KB.*%/.test(done.status), done.status);
+
+  // The "no saving" edge case found during testing: a re-encode that comes back larger
+  // is reported plainly, never offered as a download or treated as an error.
+  await mockOptimize(page, {
+    ok: true, beforeBytes: 500, afterBytes: 900, mime: "image/webp",
+    b64: Buffer.from("x").toString("base64")
+  }, 20);
+  await page.evaluate((idx) => {
+    window.__panel().querySelectorAll(".sl-item")[idx].querySelectorAll(".sl-opt")[0].click();
+  }, idxInfo.multi);
+  await page.waitForFunction((idx) => {
+    const rows = window.__panel().querySelectorAll(".sl-item")[idx].querySelectorAll(".sl-optrow");
+    return rows[1] && rows[1].textContent.indexOf("wasn't smaller") > -1;
+  }, idxInfo.multi, { timeout: 5000 });
+  const nosave = await page.evaluate((idx) => {
+    const rows = window.__panel().querySelectorAll(".sl-item")[idx].querySelectorAll(".sl-optrow");
+    return { hasButton: !!rows[1].querySelector(".sl-opt"), hasLink: !!rows[1].querySelector(".sl-opt-dl"), text: rows[1].textContent };
+  }, idxInfo.multi);
+  check("a larger re-encode is never offered as a download", nosave.hasLink === false, nosave.text);
+  check("and it is not treated as an error either — no retry button", nosave.hasButton === false, nosave.text);
+
+  // Failure: chrome.runtime.lastError surfaces as a retry button, not a stuck busy state,
+  // and retrying re-runs the same click handler to a normal success.
+  await mockOptimize(page, { __lastError: "message channel closed" }, 20);
+  await page.evaluate((idx) => {
+    window.__panel().querySelectorAll(".sl-item")[idx].querySelectorAll(".sl-opt")[0].click();
+  }, idxInfo.single);
+  await page.waitForFunction((idx) => {
+    return window.__panel().querySelectorAll(".sl-item")[idx].textContent.indexOf("Optimize failed") > -1;
+  }, idxInfo.single, { timeout: 5000 });
+  const failed = await page.evaluate((idx) => {
+    const btn = window.__panel().querySelectorAll(".sl-item")[idx].querySelector(".sl-opt");
+    return btn ? btn.textContent : null;
+  }, idxInfo.single);
+  check("a failed optimize offers a retry button, not a dead end", failed === "Try again", failed);
+
+  await mockOptimize(page, {
+    ok: true, beforeBytes: 90000, afterBytes: 30000, mime: "image/webp",
+    b64: Buffer.from("retry-bytes").toString("base64")
+  }, 20);
+  await page.evaluate((idx) => {
+    window.__panel().querySelectorAll(".sl-item")[idx].querySelector(".sl-opt").click();
+  }, idxInfo.single);
+  await page.waitForFunction((idx) => {
+    return !!window.__panel().querySelectorAll(".sl-item")[idx].querySelector(".sl-opt-dl");
+  }, idxInfo.single, { timeout: 5000 });
+  const retried = await page.evaluate((idx) => {
+    const a = window.__panel().querySelectorAll(".sl-item")[idx].querySelector(".sl-opt-dl");
+    return a ? a.getAttribute("href") : null;
+  }, idxInfo.single);
+  check("retrying after a failure succeeds normally", !!retried && retried.indexOf("blob:") === 0, retried);
 
   /* ---- 6. developer hand-off: inventories, CSV, ticket ---- */
   console.log("\ndeveloper export");
@@ -450,10 +612,51 @@ async function openPanel(page, url, lang) {
   await page.screenshot({ path: path.join(__dirname, "panel-export.png") });
   console.log(`        screenshot: ${path.join(__dirname, "panel-export.png")}`);
 
+  /* ---- 7. background.js — the SEO_LENS_OPTIMIZE handler itself, item 8 phase P1 ---- */
+  console.log("\nbackground.js — SEO_LENS_OPTIMIZE handler");
+  await page.goto(`${B}/clean.html`, { waitUntil: "load" });
+  await page.evaluate(() => {
+    window.__bgListeners = [];
+    window.chrome = {
+      action: { onClicked: { addListener: () => {} }, setBadgeText: () => {}, setBadgeBackgroundColor: () => {} },
+      tabs: { sendMessage: () => Promise.reject(new Error("no tab")), create: () => {} },
+      scripting: { executeScript: () => Promise.resolve() },
+      runtime: {
+        onMessage: { addListener: (fn) => { window.__bgListeners.push(fn); } },
+        getURL: () => ""
+      }
+    };
+  });
+  await page.addScriptTag({ content: read("background.js") });
+  const inputB64 = THUMB_PNG.toString("base64");
+  // Every listener background.js registers gets the message, the way chrome.runtime
+  // actually dispatches — only the SEO_LENS_OPTIMIZE one should ever call back.
+  const encoded = await page.evaluate((b64) => new Promise((resolve) => {
+    const msg = { type: "SEO_LENS_OPTIMIZE", b64, mime: "image/png", width: 200 };
+    let settled = false;
+    const respond = (res) => { if (!settled) { settled = true; resolve(res); } };
+    window.__bgListeners.forEach((fn) => fn(msg, {}, respond));
+  }), inputB64);
+  check("the handler accepts a base64 image and reports success",
+    !!encoded && encoded.ok === true,
+    JSON.stringify(encoded && { ok: encoded.ok, error: encoded.error, mime: encoded.mime }));
+  check("beforeBytes reflects the real source size",
+    encoded.beforeBytes === THUMB_PNG.length, `${encoded.beforeBytes} vs ${THUMB_PNG.length}`);
+  check("afterBytes is a real measurement of the re-encoded blob",
+    typeof encoded.afterBytes === "number" && encoded.afterBytes > 0, encoded.afterBytes);
+  check("the handler re-encodes to WebP, per 8h.2's decision", encoded.mime === "image/webp", encoded.mime);
+  const outBytes = Buffer.from(encoded.b64, "base64");
+  check("the returned base64 decodes to real bytes matching afterBytes",
+    outBytes.length === encoded.afterBytes, `${outBytes.length} vs ${encoded.afterBytes}`);
+  check("the output is a genuine WebP container, not a renamed copy of the input",
+    outBytes.slice(0, 4).toString("latin1") === "RIFF" && outBytes.slice(8, 12).toString("latin1") === "WEBP",
+    outBytes.slice(0, 12).toString("latin1"));
+
   await browser.close();
   server.close();
   htmlRobots.close();
   errRobots.close();
+  crossOrigin.close();
   console.log(`\n${failures ? failures + " FAILURES" : "all checks passed"}`);
   process.exit(failures ? 1 : 0);
 })().catch((e) => { console.error(e); process.exit(1); });

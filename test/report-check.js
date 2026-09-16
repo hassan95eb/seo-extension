@@ -34,6 +34,10 @@ const read = (f) => fs.readFileSync(path.join(REPO, f), "utf8");
       const r = window.__SEO_LENS_AUDIT__();
       await window.__SEO_LENS_AUDIT_HEADERS__(r);
       await window.__SEO_LENS_AUDIT_LCP__(r);
+      // Item 8 phase P1: without this, every optimizable row's bytes stay at finalize()'s
+      // initial null and the PDF only ever shows the "unknown" fallback — never the
+      // measured case. images.html below is the positive fixture for it.
+      await window.__SEO_LENS_AUDIT_WEIGHT__(r);
       return {
         lang: l, url: r.url, title: r.title, brand: r.brand, score: r.score,
         counts: r.counts, generatedAt: r.generatedAt,
