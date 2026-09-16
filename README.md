@@ -145,6 +145,14 @@ Audit results never leave the browser. The PDF report is handed to the report ta
 `chrome.storage.local` and deleted the moment that tab has read it — the only things kept on
 purpose are your language choice and your custom logo.
 
+The **Optimize** action (v2.7.0) is the one feature that makes a network request of its own:
+clicking it re-fetches the flagged image from the page's own origin — the same file your
+browser already downloaded to render the page — and re-encodes it locally with the browser's
+own WebP codec. Nothing is uploaded anywhere; the request is same-origin only, which is why
+it needs no permission beyond `activeTab`. Cross-origin images are left alone and read as
+"unknown size," because measuring or fetching those honestly needs host permissions this
+extension does not currently ask for.
+
 ## Project layout
 
 ```

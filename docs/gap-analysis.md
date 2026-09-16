@@ -250,7 +250,7 @@ The bridge that makes this credible rather than folklore: **Google's own Lightho
 
 ---
 
-## 8. Image weight and LCP — measure the saving instead of estimating it — ◐ P0 shipped in v2.6.0
+## 8. Image weight and LCP — measure the saving instead of estimating it — ◐ P0+P1 shipped in v2.6.0/v2.7.0
 
 Every performance tool in and around this category reports **estimated** savings and stops
 there. Lighthouse says "properly size images — potential savings 412 KB" and hands the number
@@ -423,7 +423,7 @@ two languages in `i18n.js`. *Risk:* low. The one real risk is the `IMG_OVERSIZED
 change moving scores on pages that previously audited clean — a CHANGELOG matter, not an
 engineering one.
 
-**P1 — measured weight and the Optimize action, same-origin images only. — ○ next**
+**P1 — measured weight and the Optimize action, same-origin images only. — ✅ shipped in v2.7.0**
 Same-origin images need no host permission, and `encodedBodySize` is populated for them without
 a `Timing-Allow-Origin` header, so the whole measurement story works honestly inside the
 existing permission model. Adds the encoder, the before/after readout, and the download.
@@ -500,6 +500,40 @@ None are blocking; all want a decision before implementation.
    and is verified at `deviceScaleFactor: 2` as well as 1.
 4. **8h.2, 8h.3, 8h.4 and 8h.5 are still open**, because P0 touches none of them: no encoder, no
    byte values to serialize, no outbound request for an asset, no permission change.
+
+**Decided, in v2.7.0 (P1):**
+
+1. **8h.2** — resolved as recommended: encoding happens in `background.js`, not a content-script
+   Worker. Verified against a real MV3 service worker (`OffscreenCanvas`, `createImageBitmap`
+   and `convertToBlob` all work there) before writing the feature around the assumption.
+2. **The payload shape was not in the original open-questions list, and was found while
+   building.** Neither `Blob` nor `ArrayBuffer` survives `chrome.runtime.sendMessage`'s
+   structured clone between a content script and a service worker — both arrive on the other
+   side JSON-flattened into `{}`. Confirmed empirically, not assumed. The image crosses as a
+   base64 string instead, the one shape guaranteed to survive.
+3. **8h.3** — resolved the cheap way it left open: byte values live on `paths[].bytes`, which
+   `serializeReport()` already passed through unchanged before this feature existed, so no
+   whitelist change was needed. The Optimize action's live before/after state is *not*
+   re-serialized — it stays panel-only, keyed to the element, and the PDF continues to reflect
+   what the audit measured rather than what was fixed afterwards in an open panel.
+4. **8h.4** — checked against the actual README wording (`README.md`/`README.fa.md`) rather than
+   rewritten on principle: the existing claim is scoped to "audit results," not to network
+   activity in general, and already coexists with the header/robots.txt requests shipped in
+   v2.4.0/v2.5.0. A new paragraph was added instead, naming the Optimize fetch explicitly,
+   because 8d itself asks for known limitations to be documented rather than discovered.
+5. **8h.5 is still open** — P1 is same-origin only and needed no permission decision. It remains
+   the question to answer before P2.
+6. **The "no saving" case was not anticipated in the plan and showed up in testing**: a small or
+   already-efficient source image can come back *larger* after a WebP re-encode. The panel
+   checks for this and says so instead of presenting a fake before/after saving.
+7. **P1's test coverage is complete**: real byte readings on same-origin paths, a cross-origin
+   fixture proving they stay `undefined` rather than a confident zero, a full panel click-flow
+   (busy → done / no-saving / error → retry → done) against a stubbed `sendMessage`, and a
+   standalone regression test that drives `background.js`'s actual `SEO_LENS_OPTIMIZE` handler
+   and checks the output is a genuine WebP container. Writing it found two gaps, both fixed:
+   the failed state rendered a retry button with no word for what failed — `optimizeFailed` was
+   translated in `i18n.js` but never used — and `test/report-check.js` never chained the weight
+   pass, so the PDF screenshots could only ever show the "unknown" fallback, never a measured one.
 
 **Effort:** small (P0), medium (P1), medium (P2). **Differentiation:** high, and of an unusual
 kind — the detection is commodity and the *fix* is not. Lighthouse, PageSpeed and every SEO

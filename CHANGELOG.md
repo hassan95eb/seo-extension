@@ -1,5 +1,73 @@
 # Changelog
 
+## v2.7.0
+
+Gap-analysis item 8, phase P1: real transferred bytes for same-origin images, and the
+**Optimize** action — re-encode, show the measured saving, hand back the file. P0 pointed
+at the defect; this is the part that closes the loop other performance tools stop short of.
+
+### Real bytes, not an estimate
+
+- A new async pass (`__SEO_LENS_AUDIT_WEIGHT__`) reads `performance.getEntriesByType
+  ('resource')` for every same-origin image already flagged by `IMG_OVERSIZED`,
+  `IMG_LEGACY_FORMAT` or `LCP_IMG` — free, since the browser already fetched these images
+  to paint the page. Cross-origin images are left alone entirely: reading their real bytes
+  needs host permissions (gap-analysis 8f), a decision this phase does not make.
+- Per 8e's hard requirement, a size that the browser could not measure — no
+  `Timing-Allow-Origin`, or a cache hit reporting `transferSize: 0` — reads as **unknown**
+  in the panel and the PDF. It never reads "0 KB."
+- The byte value rides on `paths[].bytes`, which already survived `serializeReport()`'s
+  whitelist unchanged before this feature existed — the cheapest possible answer to 8h.3.
+  The PDF report shows the same badge the panel does.
+
+### The Optimize action
+
+- Each image row under `IMG_OVERSIZED`, `IMG_LEGACY_FORMAT` and `LCP_IMG` gets its own
+  **Optimize** button. Click it and the content script fetches the same-origin file — no
+  CORS step, no new permission — and hands it to the service worker as base64.
+- **Encoding happens in `background.js`, not the content script.** The original plan called
+  for a dedicated Worker so re-encoding never touches the page's main thread, but a content
+  script's `new Worker(blobURL)` is subject to the *audited page's* CSP and fails silently
+  on exactly the well-configured sites most likely to be audited (8h.2). The service worker
+  has no page CSP and already has `OffscreenCanvas` and `createImageBitmap`.
+- The image crosses the content-script/service-worker boundary as a base64 string, not a
+  `Blob` or `ArrayBuffer` — both were tried first and neither survives
+  `chrome.runtime.sendMessage`'s structured clone; they arrive JSON-flattened into `{}`.
+  Verified against a real MV3 service worker before shipping, not assumed.
+- Re-encodes at the rendered width the audit already measured (× device pixel ratio),
+  to `image/webp`, quality `0.82`, via the browser's own encoder — no WASM codec bundle.
+  One image per click; never batched, per hard rule 6.
+- Shows the measured before → after bytes and the percentage saved, and offers the
+  optimized file as a direct download. When re-encoding does not actually produce a
+  smaller file — small or already-efficient images can go the wrong way through WebP —
+  the panel says so instead of presenting a fake saving.
+- The Optimize state (busy / done / no-saving / failed) lives in the panel only, keyed to
+  the live element, and is never written back into the audit report: the PDF reflects what
+  was measured, not what was fixed afterwards in an open panel. This is the other half of
+  8h.3 — re-serializing on every click was the alternative, and was not worth the
+  complexity for a snapshot document.
+- No manifest change. `activeTab`, `scripting`, `storage` — same three permissions as
+  v2.1. Same-origin only keeps it that way; the cross-origin case is P2, gated on the
+  `optional_host_permissions` decision in 8f, and still not built.
+
+### Found while writing the tests
+
+- The failed state had a dead i18n key: `optimizeFailed` was translated in both languages
+  but never rendered — a failed Optimize showed only a "Try again" button with no word for
+  what went wrong, unlike the no-saving and done states, which both pair a status line with
+  their control. Fixed to match.
+- `test/report-check.js`, the PDF-render harness, never chained the weight pass, so its
+  screenshots could only ever show the "unknown" fallback — never a real measured badge.
+  It now runs `__SEO_LENS_AUDIT_WEIGHT__` too, so `images.html` is a genuine positive
+  fixture for the PDF the same way it already was for the panel.
+- New coverage in `test/run.js`: real byte readings on same-origin `IMG_OVERSIZED` /
+  `IMG_LEGACY_FORMAT` / `LCP_IMG` paths, a cross-origin fixture proving those bytes stay
+  `undefined` rather than a confident zero, and a full Optimize click-flow driven through a
+  stubbed `chrome.runtime.sendMessage` — busy → done, busy → no-saving, busy → error →
+  retry → done — plus a standalone regression test that drives `background.js`'s actual
+  `SEO_LENS_OPTIMIZE` handler with a real image and checks the returned bytes decode to a
+  genuine WebP container, not just a renamed copy of the input.
+
 ## v2.6.0
 
 Gap-analysis item 8, phase P0: image weight and LCP, measured where it can be measured and

@@ -114,8 +114,17 @@
   // How many element rows are printed before the "show more" toggle appears.
   const PATHS_PREVIEW = 10;
 
+  // Item 8 phase P1: p.bytes rides through unchanged in `paths`, which was already
+  // whitelisted by serializeReport() before this feature existed — the report reflects
+  // what the weight pass measured, not whatever was optimized afterwards in the live
+  // panel (that stays interactive, panel-only state; see content.js's optimizeState).
+  const weightBadge = (p) => {
+    if (p.bytes === undefined) return "";
+    if (p.bytes === null) return `<span class="w unknown">${esc(t("weightUnknown"))}</span>`;
+    return `<span class="w">${esc(t("weightLabel", { n: Math.round(p.bytes / 1024) }))}</span>`;
+  };
   const elRow = (p) =>
-    `<li><span class="p"><bdi>${esc(p.path)}</bdi></span><span class="s"><bdi dir="auto">${esc(p.text || "")}</bdi></span></li>`;
+    `<li><span class="p"><bdi>${esc(p.path)}</bdi></span><span class="s"><bdi dir="auto">${esc(p.text || "")}</bdi></span>${weightBadge(p)}</li>`;
 
   function renderFinding(i, idx) {
     const m = I18N.issue(lang, i.code, i.params);

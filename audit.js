@@ -17,6 +17,18 @@
   // are never truncated, low enough to bound memory on pathological documents.
   const PATHS_CAP = 300;
 
+  // Item 8 phase P1: findings an image can actually be re-encoded out of. Structural
+  // findings (missing width/height, no srcset, lazy-loaded above the fold, …) are not
+  // fixed by producing a smaller file, so they never grow a weight badge or an Optimize
+  // button — only these three, where "a smaller file" is literally the fix.
+  const OPTIMIZABLE_CODES = ["IMG_OVERSIZED", "IMG_LEGACY_FORMAT", "LCP_IMG"];
+
+  // Populated by auditWeight() before it re-runs finalize(). A WeakMap so it never keeps
+  // an unmounted element alive, and module-scoped (rather than threaded through function
+  // signatures) for the same reason report/issues already are: finalize() is called from
+  // three different passes and must not need every caller to know about weight data.
+  let _weightMap = null;
+
   // Upper bound on rows kept in the image and link inventories (report.tables). These
   // are not findings — they are the raw tables the CSV export hands to a developer —
   // so the cap is higher, and the untruncated total is reported alongside it so the
@@ -741,7 +753,24 @@
     issues.sort((a, b) => order[a.severity] - order[b.severity]);
     issues.forEach((i) => {
       i.els = (i.els || []).filter((e) => e && e.nodeType === 1);
-      i.paths = i.els.slice(0, PATHS_CAP).map((e) => ({ path: cssPath(e), text: snippet(e) }));
+      const weighable = OPTIMIZABLE_CODES.indexOf(i.code) > -1;
+      i.paths = i.els.slice(0, PATHS_CAP).map((e) => {
+        const p = { path: cssPath(e), text: snippet(e) };
+        // `bytes` carries three states, not two: `undefined` (not an image this pass
+        // can ever fix, or a cross-origin one — P1 is same-origin only, see 8f), `null`
+        // (same-origin and eligible, but the browser never gave us a real number — 8e's
+        // hard requirement is that the UI says "unknown" here, never "0 KB"), or a
+        // measured byte count. The panel and the PDF both read this one field, because
+        // `paths` already survives serializeReport()'s whitelist unchanged — no new
+        // field to add there, which is the cheapest way to answer 8h.3.
+        if (weighable && e.tagName === "IMG") {
+          let sameOrigin = false;
+          try { sameOrigin = new URL(imgSource(e), location.href).origin === location.origin; }
+          catch (err) { sameOrigin = false; }
+          if (sameOrigin) p.bytes = (_weightMap && _weightMap.has(e)) ? _weightMap.get(e) : null;
+        }
+        return p;
+      });
       i.count = i.els.length;
       i.highlightable = i.els.some((e) => !["TITLE", "META", "LINK", "SCRIPT", "HEAD"].includes(e.tagName));
     });
@@ -1232,7 +1261,55 @@
     return finalize(report);
   }
 
+  /* ---------- Image weight — item 8 phase P1 ----------
+   * P0 (v2.6.0) pointed at the LCP element and named three format/markup defects. It
+   * never asked "how many bytes." This pass answers that, same-origin only: reading real
+   * transferred bytes for a cross-origin image needs host permissions (8f), and P1 is
+   * built so that decision can be deferred rather than made under pressure. Cross-origin
+   * images stay "unknown" forever unless a later version buys `optional_host_permissions`.
+   *
+   * `performance.getEntriesByType('resource')` is free — the browser already fetched
+   * these images to paint the page — but it fails quietly in two ordinary cases (8e):
+   * `encodedBodySize` is 0 without a `Timing-Allow-Origin` header, and `transferSize` is
+   * 0 on a cache hit. Both read as a real zero unless treated as "no answer," which is
+   * why every lookup below falls through to null rather than reporting 0.
+   */
+  function resourceBytes(url) {
+    let entries;
+    try { entries = performance.getEntriesByType("resource"); } catch (e) { return null; }
+    // Last match wins: a re-fetched resource (retry, or a second <img> pointed at the
+    // same URL) gets more than one entry, and the most recent is the one that actually
+    // describes what is on the page right now.
+    let entry = null;
+    for (let i = 0; i < entries.length; i++) {
+      if (entries[i].name === url) entry = entries[i];
+    }
+    if (!entry) return null;
+    const bytes = entry.encodedBodySize || entry.transferSize || 0;
+    return bytes > 0 ? bytes : null;
+  }
+
+  async function auditWeight(report) {
+    const issues = report.issues;
+    const targets = [];
+    issues.forEach((f) => {
+      if (OPTIMIZABLE_CODES.indexOf(f.code) === -1) return;
+      (f.els || []).forEach((e) => { if (e && e.tagName === "IMG" && targets.indexOf(e) === -1) targets.push(e); });
+    });
+    if (!targets.length) return report;
+
+    _weightMap = new WeakMap();
+    targets.forEach((img) => {
+      let url = "";
+      try { url = new URL(imgSource(img), location.href).href; } catch (e) { return; }
+      if (new URL(url).origin !== location.origin) return; // cross-origin: P2, not this pass
+      _weightMap.set(img, resourceBytes(url));
+    });
+    return finalize(report);
+  }
+
   window.__SEO_LENS_AUDIT__ = run;
   window.__SEO_LENS_AUDIT_HEADERS__ = auditHeaders;
   window.__SEO_LENS_AUDIT_LCP__ = auditLcp;
+  window.__SEO_LENS_AUDIT_WEIGHT__ = auditWeight;
 })();
