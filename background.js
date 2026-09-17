@@ -71,6 +71,15 @@ chrome.runtime.onMessage.addListener((msg, sender) => {
     chrome.tabs.create({ url, index: sender.tab ? sender.tab.index + 1 : undefined });
     return;
   }
+  // The standalone image compressor page (compress.html). Opened only from the panel
+  // button, next to the tab the user is on — never on install, never on its own.
+  if (msg && msg.type === "SEO_LENS_OPEN_COMPRESS") {
+    chrome.tabs.create({
+      url: chrome.runtime.getURL("compress.html"),
+      index: sender.tab ? sender.tab.index + 1 : undefined
+    });
+    return;
+  }
   if (msg && msg.type === "SEO_LENS_SCORE" && sender.tab && sender.tab.id) {
     const errors = msg.errors || 0;
     const warnings = msg.warnings || 0;

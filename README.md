@@ -89,6 +89,7 @@ goes with it.
 - **Highlight all issues** — outlines and numbers every problem element at once.
 - **PDF report** — opens a print-ready report tab; hit "Save as PDF / Print" and choose **Save as PDF** as the destination.
 - **Copy report** — plain-text report on the clipboard, ready for a ticket.
+- **Compress an image** — opens the standalone compressor in a new tab: drop or paste images in, get smaller files back. It shrinks the file and **never changes the image's dimensions**, so a picture already sized for its slot on the page stays exactly that size.
 - The **EN / فا** button switches language; your choice is remembered.
 - `Esc` closes the panel. The panel header is draggable.
 
@@ -163,6 +164,7 @@ i18n.js                full string catalogue for both languages (the only file t
 audit.js               audit engine — language-agnostic, emits code + params only
 content.js             panel, highlight system, exports
 report.html/.css/.js   print-ready report page
+compress.html/.css/.js standalone image compressor (file size only — dimensions untouched)
 fonts/                 Vazirmatn (Regular + Bold) for the PDF output
 _locales/              store name and description (en + fa)
 test/                  Playwright verification harness (see test/README.md)

@@ -6,7 +6,7 @@ const fs = require("fs");
 const path = require("path");
 const { chromium } = require("playwright");
 const { start, HTML_ROBOTS_ROUTES, ERR_ROBOTS_ROUTES, CROSS_ORIGIN_ROUTES } = require("./server");
-const { THUMB_PNG } = require("./fixtures");
+const { THUMB_PNG, PHOTO_PNG } = require("./fixtures");
 
 const REPO = process.env.REPO || path.join(__dirname, "..");
 const read = (f) => fs.readFileSync(path.join(REPO, f), "utf8");
@@ -519,6 +519,113 @@ async function mockOptimize(page, response, delayMs) {
   }, idxInfo.single);
   check("retrying after a failure succeeds normally", !!retried && retried.indexOf("blob:") === 0, retried);
 
+  /* ---- 5d. the panel keeps the reader's place — the v2.8.0 fix ----
+   * Optimize used to call renderList(), which rebuilds #sl-body wholesale: every expanded
+   * finding collapsed and the scroll position went with it, so a click on a row halfway
+   * down the panel dropped the reader at the top of a list they then had to re-open and
+   * re-scroll to find the row they had just clicked. "The item is still open" is not a
+   * sufficient assertion — a re-render that restored the open class would satisfy it while
+   * still destroying the node under the reader's cursor — so the DOM nodes themselves are
+   * marked before the click and looked for afterwards.
+   */
+  console.log("\nOptimize leaves the reader where they were");
+  // A short viewport guarantees the panel body actually overflows, so "kept the scroll
+  // position" is a claim about a real scroll offset rather than about zero.
+  await page.setViewportSize({ width: 1280, height: 520 });
+  // A fresh panel, so every image row is back to an idle Optimize button.
+  await openPanel(page, `${B}/images.html`, "en");
+  const freshIdx = await page.evaluate(() => {
+    const items = Array.from(window.__panel().querySelectorAll(".sl-item"));
+    const idx = items.findIndex((n) => n.querySelectorAll(".sl-opt").length >= 2);
+    if (idx > -1) items[idx].querySelector(".sl-row").click();
+    return idx;
+  });
+  check("a finding with two optimizable images is open for the scroll test", freshIdx > -1, String(freshIdx));
+  await mockOptimize(page, {
+    ok: true, beforeBytes: 120000, afterBytes: 40000, mime: "image/webp",
+    b64: Buffer.from("kept-in-place").toString("base64")
+  }, 40);
+  const place = await page.evaluate((idx) => {
+    const sh = window.__panel();
+    const item = sh.querySelectorAll(".sl-item")[idx];
+    const body = sh.querySelector("#sl-body");
+    item.__mark = "item";
+    Array.from(item.querySelectorAll(".sl-optrow")).forEach((r, n) => { r.__mark = "row" + n; });
+    body.scrollTop = body.scrollHeight - body.clientHeight;
+    // What the reader actually cares about is that the panel does not move under them.
+    // The last finding's position on screen is that, measured directly — scrollTop alone
+    // would be the wrong assertion, because Chrome's scroll anchoring deliberately
+    // adjusts it by a few pixels when a row above the viewport changes height, which is
+    // the browser keeping the view still rather than moving it.
+    const all = sh.querySelectorAll(".sl-item");
+    const ref = all[all.length - 1].getBoundingClientRect().top;
+    item.querySelectorAll(".sl-opt")[0].click();
+    return { scroll: body.scrollTop, ref, overflows: body.scrollHeight > body.clientHeight };
+  }, freshIdx);
+  check("the panel body really is scrolled away from the top before the click",
+    place.overflows === true && place.scroll > 0, `scrollTop ${place.scroll}`);
+
+  await page.waitForFunction((idx) => {
+    const rows = window.__panel().querySelectorAll(".sl-item")[idx].querySelectorAll(".sl-optrow");
+    return !!rows[0].querySelector(".sl-opt-dl");
+  }, freshIdx, { timeout: 5000 });
+  const kept = await page.evaluate((idx) => {
+    const sh = window.__panel();
+    const item = sh.querySelectorAll(".sl-item")[idx];
+    const body = sh.querySelector("#sl-body");
+    const rows = item.querySelectorAll(".sl-optrow");
+    return {
+      sameItem: item.__mark === "item",
+      sameClickedRow: rows[0].__mark === "row0",
+      sameOtherRow: rows[1] ? rows[1].__mark === "row1" : true,
+      otherRowHasButton: rows[1] ? !!rows[1].querySelector(".sl-opt") : true,
+      open: item.classList.contains("open"),
+      scroll: body.scrollTop,
+      ref: (() => {
+        const all = sh.querySelectorAll(".sl-item");
+        return all[all.length - 1].getBoundingClientRect().top;
+      })()
+    };
+  }, freshIdx);
+  check("optimizing does not rebuild the list", kept.sameItem === true);
+  check("the clicked row is repainted in place, not replaced", kept.sameClickedRow === true);
+  check("a sibling image row is not touched at all",
+    kept.sameOtherRow === true && kept.otherRowHasButton === true);
+  check("the finding the reader opened stays open", kept.open === true);
+  check("and the panel does not move under the reader",
+    Math.abs(kept.ref - place.ref) <= 1,
+    `reference finding moved ${Math.round(kept.ref - place.ref)}px (scrollTop ${place.scroll} → ${kept.scroll})`);
+
+  // The re-renders that are unavoidable — a rescan, a language switch, an async pass
+  // merging new findings — must not cost the reader their place either. Highlight-all
+  // is the cheapest genuine renderList() the panel exposes to a test.
+  const rerender = await page.evaluate((idx) => {
+    const sh = window.__panel();
+    const body = sh.querySelector("#sl-body");
+    const openBefore = Array.from(sh.querySelectorAll(".sl-item.open")).map((n) => n.dataset.id);
+    const scrollBefore = body.scrollTop;
+    sh.querySelector("#sl-hl-all").click();
+    const item = sh.querySelectorAll(".sl-item")[idx];
+    return {
+      openBefore, scrollBefore,
+      rebuilt: item.__mark !== "item",
+      openAfter: Array.from(sh.querySelectorAll(".sl-item.open")).map((n) => n.dataset.id),
+      scrollAfter: body.scrollTop,
+      keptDownload: !!item.querySelector(".sl-opt-dl")
+    };
+  }, freshIdx);
+  check("highlight-all really does rebuild the list", rerender.rebuilt === true,
+    "otherwise the three checks below would prove nothing");
+  check("a full re-render keeps every expanded finding expanded",
+    rerender.openAfter.join("|") === rerender.openBefore.join("|"),
+    `${rerender.openBefore.join("|")} → ${rerender.openAfter.join("|")}`);
+  check("a full re-render keeps the scroll position",
+    rerender.scrollAfter === rerender.scrollBefore,
+    `${rerender.scrollBefore} → ${rerender.scrollAfter}`);
+  check("and the optimized file survives it, because the state is keyed to the element",
+    rerender.keptDownload === true);
+  await page.setViewportSize({ width: 1280, height: 900 });
+
   /* ---- 6. developer hand-off: inventories, CSV, ticket ---- */
   console.log("\ndeveloper export");
   await openPanel(page, `${B}/assets.html`, "en");
@@ -651,6 +758,102 @@ async function mockOptimize(page, response, delayMs) {
   check("the output is a genuine WebP container, not a renamed copy of the input",
     outBytes.slice(0, 4).toString("latin1") === "RIFF" && outBytes.slice(8, 12).toString("latin1") === "WEBP",
     outBytes.slice(0, 12).toString("latin1"));
+
+  /* ---- 8. the standalone image compressor page (compress.html) ----
+   * An extension page, so it is driven over file:// rather than through the injection
+   * harness: nothing about it needs a tab, a content script or a service worker.
+   */
+  console.log("\ncompress.html — image compressor");
+  const tmpPng = path.join(__dirname, "tmp-compress-input.png");
+  fs.writeFileSync(tmpPng, PHOTO_PNG);
+  // A real, minimal GIF — the guard reads the MIME type the browser derives from the
+  // extension, but feeding it anything that is not actually a GIF would test nothing.
+  const tmpGif = path.join(__dirname, "tmp-compress-input.gif");
+  fs.writeFileSync(tmpGif, Buffer.from(
+    "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7", "base64"));
+
+  await page.goto("file://" + path.join(REPO, "compress.html"), { waitUntil: "load" });
+  const intro = await page.evaluate(() => ({
+    title: document.getElementById("page-title").textContent,
+    lead: document.getElementById("lead").textContent,
+    controlsHidden: document.getElementById("controls").hidden,
+    summaryHidden: document.getElementById("summary").hidden
+  }));
+  check("the page names itself", intro.title === "Image compressor", intro.title);
+  check("the promise on the page is file size only, in so many words",
+    /dimensions/i.test(intro.lead), intro.lead);
+  check("controls and summary stay out of the way until there is a file",
+    intro.controlsHidden === true && intro.summaryHidden === true);
+
+  await page.setInputFiles("#file", tmpPng);
+  await page.waitForSelector(".row .dl", { timeout: 20000 });
+  const webp = await page.evaluate(async () => {
+    const a = document.querySelector(".row .dl");
+    const blob = await fetch(a.href).then((r) => r.blob());
+    const bmp = await createImageBitmap(blob);
+    return {
+      name: a.getAttribute("download"), type: blob.type, bytes: blob.size,
+      w: bmp.width, h: bmp.height,
+      dims: document.querySelector(".row .dims").textContent,
+      res: document.querySelector(".row .res").textContent,
+      summary: document.getElementById("summary").textContent
+    };
+  });
+  // The whole point of this page: an image already sized correctly for where it is used
+  // must come back the same size. A compressor that quietly resizes is a different tool.
+  check("the compressed file keeps the source dimensions exactly",
+    webp.w === 600 && webp.h === 450, `${webp.w}×${webp.h}`);
+  check("and it really is smaller", webp.bytes < PHOTO_PNG.length,
+    `${PHOTO_PNG.length} → ${webp.bytes}`);
+  check("the output is a real WebP, not a renamed PNG", webp.type === "image/webp", webp.type);
+  check("the download is named for the original and marked", /-min\.webp$/.test(webp.name), webp.name);
+  check("the row says the dimensions were left alone",
+    /600×450/.test(webp.dims) && /unchanged/.test(webp.dims), webp.dims);
+  check("the row reports the measured saving", /\d+ KB.*\d+ KB.*%/.test(webp.res), webp.res);
+  check("one file is summarised as one file, not \"1 files\"",
+    /^1 file /.test(webp.summary), webp.summary);
+  await page.screenshot({ path: path.join(__dirname, "compress-en.png") });
+  console.log(`        screenshot: ${path.join(__dirname, "compress-en.png")}`);
+
+  await page.selectOption("#format", "image/jpeg");
+  await page.waitForFunction(() => {
+    const a = document.querySelector(".row .dl");
+    return !!a && /-min\.jpg$/.test(a.getAttribute("download"));
+  }, null, { timeout: 20000 });
+  const jpg = await page.evaluate(async () => {
+    const a = document.querySelector(".row .dl");
+    const blob = await fetch(a.href).then((r) => r.blob());
+    const bmp = await createImageBitmap(blob);
+    return { type: blob.type, w: bmp.width, h: bmp.height };
+  });
+  check("changing the output format re-encodes the same file", jpg.type === "image/jpeg", jpg.type);
+  check("and the dimensions are still untouched", jpg.w === 600 && jpg.h === 450, `${jpg.w}×${jpg.h}`);
+
+  await page.setInputFiles("#file", tmpGif);
+  await page.waitForFunction(() => document.querySelectorAll(".row").length === 2, null, { timeout: 20000 });
+  const gif = await page.evaluate(() => {
+    const row = document.querySelectorAll(".row")[1];
+    return { text: row.querySelector(".res").textContent, hasDownload: !!row.querySelector(".dl") };
+  });
+  check("an animated GIF is refused with the reason, not silently flattened",
+    /first frame/.test(gif.text), gif.text);
+  check("and it is never offered as a download", gif.hasDownload === false);
+
+  await page.click("#btn-lang");
+  const fa = await page.evaluate(() => ({
+    dir: document.documentElement.getAttribute("dir"),
+    lang: document.documentElement.getAttribute("lang"),
+    title: document.getElementById("page-title").textContent,
+    english: /[A-Za-z]{4}/.test(document.getElementById("lead").textContent)
+  }));
+  check("the Persian side mirrors the whole page", fa.dir === "rtl" && fa.lang === "fa",
+    `${fa.dir} / ${fa.lang}`);
+  check("and it is actually in Persian", fa.english === false && fa.title.length > 0, fa.title);
+  await page.screenshot({ path: path.join(__dirname, "compress-fa.png") });
+  console.log(`        screenshot: ${path.join(__dirname, "compress-fa.png")}`);
+
+  fs.unlinkSync(tmpPng);
+  fs.unlinkSync(tmpGif);
 
   await browser.close();
   server.close();

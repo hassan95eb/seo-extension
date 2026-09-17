@@ -1,5 +1,54 @@
 # Changelog
 
+## v2.8.0
+
+A standalone image compressor, and the panel bug that showed up the first time someone
+actually used the Optimize button on a long page.
+
+### The panel no longer loses the reader's place
+
+- Clicking **Optimize** used to call `renderList()`, which rebuilds the whole panel body:
+  every expanded finding collapsed and the scroll position went with it, so a click on a
+  row halfway down the panel dropped the reader back into a list they then had to scroll
+  and re-open to find the row they had just clicked. One image's encode state concerns one
+  image, so it is now written into that one row — `refreshOptimizeRow()` replaces the
+  contents of the `.sl-optrow` that was clicked and touches nothing else.
+- The re-renders that *are* unavoidable — a rescan, the language toggle, an async pass
+  merging new findings — no longer cost the reader their place either. `renderList()` reads
+  which findings are expanded, which element lists are unfolded and how far down the body
+  is scrolled, and re-applies all three to the rebuilt list. Changing the filter still
+  scrolls back to the top, because there the old offset means nothing.
+- The regression test asserts the DOM node itself survives the click, not merely that the
+  finding is still open: a re-render that restored the open class would pass the weaker
+  check while still yanking the list out from under the cursor. What "did not move" means
+  is measured as the on-screen position of another finding, since Chrome's scroll anchoring
+  legitimately adjusts `scrollTop` by a few pixels to keep the view still.
+
+### Image compressor (`compress.html`)
+
+- A separate page, opened from a new button in the panel: drop or paste images in, get
+  smaller files out. The panel's Optimize button works on images that are already on a page
+  being audited; this is for the file on your disk, before it is ever uploaded.
+- **Dimensions are never touched.** The canvas is created at the bitmap's own width and
+  height and the row states the size back to you as unchanged. An image that is already
+  sized correctly for where it will be used must not be silently resized — which is exactly
+  what every "image optimizer" does by default, and the reason this page exists at all.
+- WebP, JPEG or PNG out, with a quality slider that re-encodes what is already loaded.
+  Several files at once, each with its own before → after reading and its own download.
+- A re-encode that comes back **larger** is reported as such and never offered as a
+  download — the same honesty rule the panel's Optimize action follows. PNG hits this often.
+- An animated GIF is refused with the reason rather than silently flattened:
+  `createImageBitmap` would keep the first frame and throw the animation away, which is a
+  destroyed file, not a compressed one.
+- Encoding runs on the page, not in the service worker. The panel's Optimize action routes
+  through `background.js` because a content script's encoder is subject to the *audited
+  page's* CSP; this is the extension's own page under its own CSP, so the detour buys
+  nothing. Nothing is uploaded, no permission was added, and `manifest.json` gains no entry
+  beyond the version bump.
+- Bilingual and fully RTL like the rest of the extension. The `600×450` in the row is
+  isolated through `fill()` rather than interpolated as two numbers, because `{w}×{h}`
+  renders as `450×600` in an RTL line — the exact bug class the product exists to catch.
+
 ## v2.7.0
 
 Gap-analysis item 8, phase P1: real transferred bytes for same-origin images, and the

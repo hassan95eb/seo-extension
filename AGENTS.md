@@ -41,6 +41,8 @@ content.js             Panel UI, highlight overlay, exports (PDF hand-off, CSV, 
 AGENTS.md              A byte-identical copy of this file, for tools that look for that name.
                        Edit CLAUDE.md and copy it over; do not let the two drift.
 report.html/.css/.js   Print-ready A4 report page.
+compress.html/.css/.js Standalone image compressor. Opened from the panel button; shrinks a
+                       file the user drops in and never changes its dimensions.
 install.ps1            Windows installer/updater. Fetches latest release, preps folder.
 _locales/              Store name + description (en, fa).
 fonts/                 Vazirmatn, embedded so the PDF renders identically everywhere.
@@ -111,6 +113,12 @@ The rules behind it, if you extend it:
   never reported as the largest paint however large it is displayed. `fixtures.js` generates
   deterministic *noise* PNGs for that reason — incompressible on purpose, and generated rather
   than committed so the repo stays free of megabytes of binary test assets.
+- The compressor page is driven over `file://` rather than through the injection harness —
+  nothing about it needs a tab, a content script or a service worker. Its input fixture is
+  `PHOTO_PNG`, *not* one of the noise PNGs: noise is incompressible on purpose so Chrome
+  will accept it as an LCP candidate, which is the worst case for a lossy encoder and
+  re-encodes **larger** than PNG stores it. Asserting "the file got smaller" against noise
+  asserts the opposite of reality.
 - Screen-dependent checks need a second context. The `devicePixelRatio` term in `IMG_OVERSIZED`
   is verified by auditing the same fixture at `deviceScaleFactor: 2` and asserting the finding
   is *absent* — a threshold change with no such test is an assertion, not a verification.
@@ -137,7 +145,30 @@ file as modified.
 
 ## Current state
 
-- **v2.7.0** built: gap-analysis item 8, phase **P1** — real bytes and the **Optimize**
+- **v2.8.0** built: a standalone **image compressor** page (`compress.html`), plus the panel
+  bug the v2.7.0 Optimize button exposed. The bug: clicking Optimize called `renderList()`,
+  which rebuilds `#sl-body` wholesale, so every expanded finding collapsed and the scroll
+  position went with it — a click halfway down the panel dropped the reader at the top of a
+  list they then had to re-open and re-scroll. Fixed in two layers: `refreshOptimizeRow()`
+  repaints only the `.sl-optrow` that was clicked (the row div carries `data-idx`, the
+  buttons are re-bound by `bindOptimize()`), and `renderList()` itself now carries open
+  findings, unfolded element lists and `scrollTop` across a rebuild — `opts.resetScroll`
+  is the one exception, for the filter buttons. The compressor is a page, not a panel
+  feature: it takes a file off the user's disk, re-encodes it at **its own width and
+  height** (the whole point — an image already sized for its slot must not be resized
+  behind the user's back), and hands it back. WebP/JPEG/PNG, a quality slider, several
+  files at once, a larger re-encode reported rather than offered, animated GIF refused
+  with the reason instead of flattened to its first frame. Encoding runs on the page, not
+  in the service worker: that indirection exists for the panel because a content script's
+  encoder is subject to the *audited page's* CSP, and an extension page has no such
+  problem. No manifest change beyond the version — `activeTab`, `scripting`, `storage`.
+  Entry point is a button in the panel; nothing opens on its own (hard rule 4). Tested:
+  `npm test` and `npm run report` both green, including the compressor's dimension
+  invariant (the output bitmap is decoded and its width/height asserted against the
+  source), the GIF refusal, the format switch, and a regression test that marks the panel's
+  DOM nodes before the Optimize click and looks for them afterwards. Not shipped to GitHub
+  yet — branch `feat/image-compressor-page`, awaiting the commit → tag → release cycle.
+- **v2.7.0** shipped: gap-analysis item 8, phase **P1** — real bytes and the **Optimize**
   action, same-origin only. A fourth async entry point, `__SEO_LENS_AUDIT_WEIGHT__()`,
   reads `performance.getEntriesByType('resource')` for same-origin images already flagged
   by `IMG_OVERSIZED`, `IMG_LEGACY_FORMAT` or `LCP_IMG`; the byte value (or `null` for
@@ -157,8 +188,7 @@ file as modified.
   `activeTab`, `scripting`, `storage` only. Full test coverage written and passing —
   `npm test` and `npm run report` both green, including the weight pass, the cross-origin
   "stays unknown" case, and the full Optimize click-flow (busy → done / no-saving /
-  error → retry). Still needs the branch → commit → tag → release cycle described above;
-  the code is complete and tested but nothing has shipped to GitHub yet.
+  error → retry).
 - **v2.6.0** shipped: gap-analysis item 8, phase **P0 only** — DOM checks and the LCP element,
   no byte measurement, no encoder, no manifest change. `__SEO_LENS_AUDIT_LCP__()` reads the
   largest paint with `buffered: true` and reports it as a `stat` (`LCP_IMG` / `LCP_TEXT`), with
