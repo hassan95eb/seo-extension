@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>SEO Lens</title>
+<link rel="stylesheet" href="compress.css">
+</head>
+<body>
+  <div class="toolbar">
+    <span class="tb-logo">SEO Lens</span>
+    <span class="tb-title" id="page-title"></span>
+    <button id="btn-lang">فا / EN</button>
+  </div>
+
+  <main class="wrap">
+    <p class="lead" id="lead"></p>
+
+    <label class="drop" id="drop" tabindex="0">
+      <span class="drop-main" id="drop-main"></span>
+      <span class="drop-hint" id="drop-hint"></span>
+      <input type="file" id="file" accept="image/*" multiple hidden>
+    </label>
+
+    <section class="controls" id="controls" hidden>
+      <div class="ctl">
+        <label for="quality" id="l-quality"></label>
+        <input type="range" id="quality" min="40" max="100" step="1" value="82">
+        <output class="ctl-out" id="quality-out">82</output>
+      </div>
+      <div class="ctl">
+        <label for="format" id="l-format"></label>
+        <select id="format">
+          <option value="image/webp">WebP</option>
+          <option value="image/jpeg">JPEG</option>
+          <option value="image/png">PNG</option>
+        </select>
+      </div>
+      <div class="ctl ctl-end">
+        <button id="btn-all" class="primary"></button>
+        <button id="btn-clear"></button>
+      </div>
+    </section>
+
+    <div class="summary" id="summary" hidden></div>
+    <div class="list" id="list"></div>
+    <p class="note" id="note"></p>
+  </main>
+
+  <footer class="foot">
+    <span class="sign-mark">hassan mode : on</span>
+    <span class="foot-dot">•</span>
+    <a class="sign-link" href="https://github.com/hassan95eb/seo-extension">github.com/hassan95eb</a>
+  </footer>
+
+<script src="i18n.js"></script>
+<script src="compress.js"></script>
+</body>
+</html>

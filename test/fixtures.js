@@ -295,9 +295,44 @@ function noisePng(width, height) {
   ]);
 }
 
+/* A photograph-shaped PNG for the compressor page: smooth gradients with a few hard
+ * edges, which is what a lossy encoder is actually good at. The noise PNGs above are
+ * deliberately incompressible so the browser will accept them as LCP candidates — the
+ * exact worst case for WebP, which re-encodes pure noise LARGER than PNG stores it.
+ * Testing "the file got smaller" against noise would assert the opposite of reality.
+ */
+function photoPng(width, height) {
+  const stride = width * 3 + 1;
+  const raw = Buffer.alloc(stride * height);
+  for (let y = 0; y < height; y++) {
+    let p = y * stride;
+    raw[p++] = 0; // filter: none
+    for (let x = 0; x < width; x++) {
+      const band = (x / width) * 255;
+      const sweep = (y / height) * 255;
+      const blob = Math.max(0, 180 - Math.hypot(x - width * 0.35, y - height * 0.6) * 0.8);
+      raw[p++] = Math.min(255, Math.round(band * 0.7 + blob));
+      raw[p++] = Math.min(255, Math.round(sweep * 0.8 + (x % 90 < 6 ? 60 : 0)));
+      raw[p++] = Math.min(255, Math.round(255 - band * 0.5 + (y % 120 < 5 ? 40 : 0)));
+    }
+  }
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(width, 0);
+  ihdr.writeUInt32BE(height, 4);
+  ihdr[8] = 8; // bit depth
+  ihdr[9] = 2; // truecolour
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    pngChunk("IHDR", ihdr),
+    pngChunk("IDAT", zlib.deflateSync(raw, { level: 1 })),
+    pngChunk("IEND", Buffer.alloc(0))
+  ]);
+}
+
 const HERO_PNG = noisePng(800, 600);   // displayed at 640×480 — the LCP element
 const THUMB_PNG = noisePng(600, 450);  // displayed at 200×150 — overscaled on any screen
 const TWOX_PNG = noisePng(400, 300);   // displayed at 200×150 — correct on a 2× screen only
+const PHOTO_PNG = photoPng(600, 450);  // compressor-page input: lossy-friendly, unlike the noise above
 const LOGO_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160">' +
   '<rect width="160" height="160" fill="#0e7490"/></svg>';
@@ -354,6 +389,6 @@ const CROSS_ORIGIN = `<!DOCTYPE html>
 module.exports = {
   CLEAN, RTL_BROKEN, RTL_GOOD, SCHEMA, HEADERS, RAW_JS_ONLY, RAW_PARTIAL,
   RAW_ROBOTS_REMOVED, RAW_ROBOTS_CHANGED, ASSETS, ROBOTS_TXT,
-  IMAGES, HERO_PNG, THUMB_PNG, TWOX_PNG, LOGO_SVG,
+  IMAGES, HERO_PNG, THUMB_PNG, TWOX_PNG, PHOTO_PNG, LOGO_SVG,
   CROSS_ORIGIN, REMOTE_PNG
 };

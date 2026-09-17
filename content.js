@@ -276,13 +276,16 @@
     if (!el || !el.isConnected) return;
     const prev = optimizeState.get(el);
     if (prev && prev.status === "busy") return;
+    // Repaint this row alone; fall back to a full render only if the row is gone
+    // (a language switch or a rescan rebuilt the list while this was in flight).
+    const paint = () => { if (!refreshOptimizeRow(issue, idx)) renderList(); };
     if (prev && prev.blobUrl) { try { URL.revokeObjectURL(prev.blobUrl); } catch (e) { /* ignore */ } }
     optimizeState.set(el, { status: "busy" });
-    renderList();
+    paint();
 
     let srcUrl = "";
     try { srcUrl = new URL(el.currentSrc || el.getAttribute("src") || "", location.href).href; }
-    catch (e) { optimizeState.set(el, { status: "error" }); renderList(); return; }
+    catch (e) { optimizeState.set(el, { status: "error" }); paint(); return; }
 
     const rect = el.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
@@ -313,11 +316,11 @@
             blobUrl, filename: `${base}-optimized.webp`
           });
         }
-        renderList();
+        paint();
       })
       .catch((e) => {
         console.debug("SEO Lens optimize:", e);
-        if (el.isConnected) { optimizeState.set(el, { status: "error" }); renderList(); }
+        if (el.isConnected) { optimizeState.set(el, { status: "error" }); paint(); }
       });
   }
 
@@ -617,6 +620,9 @@
           <button data-x="errors">${t("copyErrors")}</button>
         </div>
       </div>
+      <div class="sl-tools">
+        <button id="sl-compress">${t("cmpOpen")}</button>
+      </div>
       <div class="sl-filters">
         <button class="sl-filter" data-f="all">${t("fAll")}</button>
         <button class="sl-filter e" data-f="error">${t("fError")} <span id="sl-cnt-error">0</span></button>
@@ -650,6 +656,15 @@
     shadow.querySelector("#sl-clear").addEventListener("click", () => {
       clearHighlights(); highlightAllOn = false; activeIssueId = null; renderList();
     });
+    // Opens the standalone compressor page. User-initiated only — hard rule 4: the
+    // extension never opens a tab on its own.
+    shadow.querySelector("#sl-compress").addEventListener("click", () => {
+      try {
+        chrome.runtime.sendMessage({ type: "SEO_LENS_OPEN_COMPRESS" });
+      } catch (e) {
+        flash(t("cmpOpenFailed"));
+      }
+    });
     shadow.querySelector("#sl-copy").addEventListener("click", copyReport);
     shadow.querySelector("#sl-pdf").addEventListener("click", openPdfReport);
 
@@ -681,7 +696,7 @@
       b.addEventListener("click", () => {
         filter = b.dataset.f;
         shadow.querySelectorAll(".sl-filter").forEach((x) => x.classList.toggle("on", x === b));
-        renderList();
+        renderList({ resetScroll: true });
       });
     });
   }
@@ -742,36 +757,92 @@
   // re-renders. The two are independent on purpose: bytes can be null (8e — "unknown",
   // never "0 KB") while the button is still fully usable, because clicking Optimize gets
   // its own authoritative before/after reading regardless of what resource timing knew.
-  function renderOptimizeRow(p, idx, el) {
+  function optimizeRowInner(p, idx, el) {
     const state = el ? (optimizeState.get(el) || { status: "idle" }) : { status: "idle" };
     const badge = p.bytes == null
       ? `<span class="sl-weight unknown">${esc(t("weightUnknown"))}</span>`
       : `<span class="sl-weight">${esc(t("weightLabel", { n: Math.round(p.bytes / 1024) }))}</span>`;
 
     if (state.status === "busy") {
-      return `<div class="sl-optrow">${badge}<span class="sl-opt-status">${esc(t("optimizing"))}</span></div>`;
+      return `${badge}<span class="sl-opt-status">${esc(t("optimizing"))}</span>`;
     }
     if (state.status === "done") {
       const before = Math.round(state.before / 1024), after = Math.round(state.after / 1024);
       const pct = state.before > 0 ? Math.round((1 - state.after / state.before) * 100) : 0;
-      return `<div class="sl-optrow">` +
-        `<span class="sl-opt-status">${esc(t("optimizeResult", { before, after, pct }))}</span>` +
-        `<a class="sl-opt-dl" href="${esc(state.blobUrl)}" download="${esc(state.filename)}">${esc(t("optimizeDownload"))}</a>` +
-        `</div>`;
+      return `<span class="sl-opt-status">${esc(t("optimizeResult", { before, after, pct }))}</span>` +
+        `<a class="sl-opt-dl" href="${esc(state.blobUrl)}" download="${esc(state.filename)}">${esc(t("optimizeDownload"))}</a>`;
     }
     if (state.status === "nosave") {
-      return `<div class="sl-optrow">${badge}<span class="sl-opt-status">${esc(t("optimizeNoSaving"))}</span></div>`;
+      return `${badge}<span class="sl-opt-status">${esc(t("optimizeNoSaving"))}</span>`;
     }
     if (state.status === "error") {
-      return `<div class="sl-optrow">${badge}<span class="sl-opt-status">${esc(t("optimizeFailed"))}</span>` +
-        `<button class="sl-opt" data-idx="${idx}">${esc(t("optimizeRetry"))}</button></div>`;
+      return `${badge}<span class="sl-opt-status">${esc(t("optimizeFailed"))}</span>` +
+        `<button class="sl-opt" data-idx="${idx}">${esc(t("optimizeRetry"))}</button>`;
     }
-    return `<div class="sl-optrow">${badge}<button class="sl-opt" data-idx="${idx}">${esc(t("optimize"))}</button></div>`;
+    return `${badge}<button class="sl-opt" data-idx="${idx}">${esc(t("optimize"))}</button>`;
   }
 
-  function renderList() {
+  // The wrapper carries data-idx so one row can be found and repainted on its own.
+  function renderOptimizeRow(p, idx, el) {
+    return `<div class="sl-optrow" data-idx="${idx}">${optimizeRowInner(p, idx, el)}</div>`;
+  }
+
+  // Every ".sl-opt" inside `scope` gets its own listener keyed by its own data-idx — a
+  // finding can flag several images and the action is per image. Called with the whole
+  // item on a full render, and with a single row when only that row was repainted.
+  function bindOptimize(scope, issue) {
+    scope.querySelectorAll(".sl-opt").forEach((optBtn) => {
+      optBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (issue) startOptimize(issue, Number(optBtn.dataset.idx));
+      });
+    });
+  }
+
+  /* Clicking Optimize used to call renderList(), which rebuilds #sl-body wholesale: every
+   * expanded finding collapsed and the scroll position went with it, so a click on a row
+   * halfway down the panel threw the reader back to a list they then had to scroll and
+   * re-open to find the row again. Nothing about one image's encode state concerns any
+   * other row, so the state change is written into that one row instead, and the rest of
+   * the panel is not touched at all. renderList() keeps open state and scroll now too
+   * (see below), which covers the async passes that legitimately re-render.
+   */
+  function refreshOptimizeRow(issue, idx) {
+    if (!shadow || !issue) return false;
+    const body = shadow.querySelector("#sl-body");
+    if (!body) return false;
+    const item = Array.from(body.querySelectorAll(".sl-item")).find((n) => n.dataset.id === issue.id);
+    if (!item) return false;
+    const row = Array.from(item.querySelectorAll(".sl-optrow")).find((n) => Number(n.dataset.idx) === idx);
+    if (!row) return false;
+    const p = (issue.paths || [])[idx];
+    if (!p) return false;
+    row.innerHTML = optimizeRowInner(p, idx, issue.els && issue.els[idx]);
+    bindOptimize(row, issue);
+    return true;
+  }
+
+  /* A full re-render is unavoidable on a rescan, a language switch or an async pass that
+   * merges new findings — but it must not cost the reader their place. What the reader
+   * did to this list (which findings are expanded, which element lists are unfolded, how
+   * far down they scrolled) is UI state, not audit data, so it is read back off the DOM
+   * here and re-applied to the rebuilt list. `opts.resetScroll` is for the one case where
+   * staying put would be wrong: changing the filter replaces the list with a different
+   * one, and the old offset means nothing in it.
+   */
+  function renderList(opts) {
     if (!shadow || !report) return;
     const body = shadow.querySelector("#sl-body");
+    const prevScroll = body.scrollTop;
+    const openIds = new Set(
+      Array.from(body.querySelectorAll(".sl-item.open")).map((n) => n.dataset.id)
+    );
+    const unfoldedIds = new Set(
+      Array.from(body.querySelectorAll(".sl-item")).filter((n) => {
+        const rest = n.querySelector(".sl-rest");
+        return rest && !rest.hasAttribute("hidden");
+      }).map((n) => n.dataset.id)
+    );
     const items = report.issues.filter((i) => (filter === "all" ? true : i.severity === filter));
     const hlBtn = shadow.querySelector("#sl-hl-all");
     hlBtn.classList.toggle("on", highlightAllOn);
@@ -781,6 +852,7 @@
       body.innerHTML = `<div class="sl-empty">${t("empty")}</div>`;
       return;
     }
+
     body.innerHTML = items.map((i) => {
       const m = SEV_META[i.severity];
       const msg = tIssue(i);
@@ -800,19 +872,21 @@
       const shown = allPaths.slice(0, PATHS_PREVIEW).map((p, idx) => pathRow(p, idx)).join("");
       const restRows = allPaths.slice(PATHS_PREVIEW).map((p, idx) => pathRow(p, idx + PATHS_PREVIEW)).join("");
       const restCount = allPaths.length - PATHS_PREVIEW;
+      const unfolded = unfoldedIds.has(i.id);
       const targets = shown
         ? `<ul class="sl-targets">${shown}</ul>` +
           (restRows
-            ? `<ul class="sl-targets sl-rest" hidden>${restRows}</ul>` +
+            ? `<ul class="sl-targets sl-rest"${unfolded ? "" : " hidden"}>${restRows}</ul>` +
               `<button class="sl-more" data-more="${esc(t("moreItems", { n: restCount }))}" ` +
-              `data-less="${esc(t("lessItems"))}">${esc(t("moreItems", { n: restCount }))}</button>`
+              `data-less="${esc(t("lessItems"))}">` +
+              `${esc(unfolded ? t("lessItems") : t("moreItems", { n: restCount }))}</button>`
             : "")
         : "";
       const detail = msg.d
         ? esc(msg.d) + (i.detailRaw ? ` — <bdi dir="auto">${esc(i.detailRaw)}</bdi>` : "")
         : (i.detailRaw ? `<bdi dir="auto">${esc(i.detailRaw)}</bdi>` : "");
       return `
-      <div class="sl-item ${i.severity} ${activeIssueId === i.id ? "active" : ""}" data-id="${i.id}">
+      <div class="sl-item ${i.severity} ${activeIssueId === i.id ? "active" : ""}${openIds.has(i.id) ? " open" : ""}" data-id="${i.id}">
         <div class="sl-row">
           <span class="sl-dot" style="background:${m.color}">${m.icon}</span>
           <div class="sl-txt">
@@ -875,17 +949,13 @@
         });
       }
       // One button per image row, not one per finding — a finding can flag several
-      // images, and 8d's Optimize action is per image, so every ".sl-opt" in this item
-      // needs its own listener keyed by its own data-idx.
-      node.querySelectorAll(".sl-opt").forEach((optBtn) => {
-        optBtn.addEventListener("click", (e) => {
-          e.stopPropagation();
-          if (issue) startOptimize(issue, Number(optBtn.dataset.idx));
-        });
-      });
+      // images, and 8d's Optimize action is per image.
+      bindOptimize(node, issue);
       // The download anchor needs no listener — it is a real <a download> pointed at an
       // object URL already created in optimizeState, same mechanism as the CSV export.
     });
+
+    body.scrollTop = opts && opts.resetScroll ? 0 : prevScroll;
   }
 
   function flash(msg) {
