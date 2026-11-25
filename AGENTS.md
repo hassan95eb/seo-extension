@@ -166,8 +166,8 @@ file as modified.
   `npm test` and `npm run report` both green, including the compressor's dimension
   invariant (the output bitmap is decoded and its width/height asserted against the
   source), the GIF refusal, the format switch, and a regression test that marks the panel's
-  DOM nodes before the Optimize click and looks for them afterwards. Not shipped to GitHub
-  yet — branch `feat/image-compressor-page`, awaiting the commit → tag → release cycle.
+  DOM nodes before the Optimize click and looks for them afterwards. The feature was merged
+  into `main` in PR #4. The release ZIP is distributed through GitHub Releases.
 - **v2.7.0** shipped: gap-analysis item 8, phase **P1** — real bytes and the **Optimize**
   action, same-origin only. A fourth async entry point, `__SEO_LENS_AUDIT_WEIGHT__()`,
   reads `performance.getEntriesByType('resource')` for same-origin images already flagged
